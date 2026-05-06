@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>blackbox3000</title>
+<style>
+html,body{margin:0;padding:0;width:100%;height:100%;background:black;overflow:hidden;}
+canvas,video{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;}
+canvas{z-index:1;}
+</style>
+</head>
+<body>
+<video id="videoBg" autoplay muted playsinline style="display:none;"></video>
+<canvas id="visual"></canvas>
+
+<script>
+const canvas = document.getElementById("visual");
+const ctx = canvas.getContext("2d");
+
+let W = window.innerWidth;
+let H = window.innerHeight;
+canvas.width = W;
+canvas.height = H;
+
+const videoBg = document.getElementById("videoBg");
+let cameraStream = null;
+
+const params = {
+  bgSource: "color",
+  shapes: 0,
+  size: 120,
+  count: 12,
+  shapeColor1: "#00ffff",
+  shapeColor2: "#ff00ff",
+  shapeGradient: true,
+  bgColor1: "#111111",
+  bgColor2: "#440044",
+  bgGradient: false,
+  autoGradient: false,
+  invertColors: false,
+  animation: "bounce",
+  placement: "normal",
+  speed: 5,
+  angle: 0,
+  particles: [],
+  gridEnabled: false,
+  gridColor: "#222222",
+  gridSpacing: 50,
+  postFX: ["none"],
+  fxBuffers: {},
+  strokeColor: "#ffffff",
+  strokeWidth: 3,
+  strokeEnabled: true,
+  grainEnabled: true
+};
+
+const shapeTypes = ["none", "square", "random", "circle", "starburst", "worm"];
+
+function detRandom(seed) {
+    const x = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
+    return x - Math.floor(x);
+}
+
+async function initCamera(type){
+  if(cameraStream){ cameraStream.getTracks().forEach(t=>t.stop()); cameraStream=null; videoBg.style.display="none"; }
+  if(type==="color"){ videoBg.style.display="none"; return; }
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    let target = devices.find(d=>d.kind==="videoinput");
+    if(type==="macbookCam") target = devices.find(d=>/FaceTime/i.test(d.label)) || target;
+    if(type==="usbCam") target = devices.find(d=>/USB/i.test(d.label)) || target;
+    const constraints = {video:{deviceId: target.deviceId}};
+    cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+    videoBg.srcObject = cameraStream;
+    await videoBg.play();
+    videoBg.style.display="block";
+  } catch(e){ console.warn("Camera error", e); }
+}
+
+function shapePath(type, size, index){
+  ctx.beginPath();
+  if(type==="square") ctx.rect(-size/2, -size/2, size, size);
+  else if(type==="circle") ctx.arc(0, 0, size/2, 0, Math.PI*2);
+  else if(type==="random"){
+    const numPoints = 12; 
+    const points = [];
+    const seed = index * 100; 
+    for(let i=0; i<numPoints; i++){
+      const angle = (i / numPoints) * Math.PI * 2 - Math.PI/2;
+      const r = (size/2) * (0.3 + detRandom(seed + i) * 0.6);
+      const angleJitter = (detRandom(seed + i + 1000) - 0.5) * 0.2;
+      points.push({
+        x: Math.cos(angle + angleJitter) * r,
+        y: Math.sin(angle + angleJitter) * r
+      });
+    }
+    const firstMidX = (points[0].x + points[numPoints-1].x) / 2;
+    const firstMidY = (points[0].y + points[numPoints-1].y) / 2;
+    ctx.moveTo(firstMidX, firstMidY);
+    for(let i = 0; i < numPoints; i++){
+        const p1 = points[i];
+        const p2 = points[(i + 1) % numPoints];
+        const midX = (p1.x + p2.x) / 2;
+        const midY = (p1.y + p2.y) / 2;
+        ctx.quadraticCurveTo(p1.x, p1.y, midX, midY);
+    }
+    ctx.closePath();
+  } 
+  else if(type==="starburst"){
+    const spikes = 16;
+    const inner = size * 0.22;
+    const outer = size * 0.52;
+    for(let i = 0; i < spikes * 2; i++){
+      const radius = (i % 2 === 0) ? outer : inner;
+      const a = (i * Math.PI) / spikes - Math.PI/2;
+      const x = Math.cos(a) * radius;
+      const y = Math.sin(a) * radius;
+      if(i===0) ctx.moveTo(x,y);
+      else ctx.lineTo(x,y);
+    }
+    ctx.closePath();
+  } 
+  else if(type==="worm"){
+    const segments = 20;
+    const amplitude = size * 0.15;
+    const length = size;
+    ctx.moveTo(-length/2, 0);
+    for(let i = 1; i <= segments; i++){
+      const t = i / segments;
+      const x = -length/2 + t * length;
+      const y = Math.sin(t * Math.PI * 2 + params.angle) * amplitude;
+      const prevT = (i - 1) / segments;
+      const prevX = -length/2 + prevT * length;
+      const prevY = Math.sin(prevT * Math.PI * 2 + params.angle) * amplitude;
+      const cx = (prevX + x) / 2;
+      const cy = (prevY + y) / 2;
+      ctx.quadraticCurveTo(prevX, prevY, cx, cy);
+    }
+  }
+}
+
+function drawGrid(){
+  if(!params.gridEnabled) return;
+  ctx.save();
+  ctx.strokeStyle = params.gridColor;
+  ctx.lineWidth = 1;
+  for(let x=0;x<=W;x+=params.gridSpacing){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(let y=0;y<=H;y+=params.gridSpacing){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+  ctx.restore();
+}
+
+function drawShapeVisual(size, index){
+  const currentShape = shapeTypes[Math.floor(params.shapes)];
+  if(currentShape === "none") return;
+
+  if (params.shapeGradient) {
+    const g = ctx.createLinearGradient(-size/2, -size/2, size/2, size/2);
+    g.addColorStop(0, params.shapeColor1);
+    g.addColorStop(1, params.shapeColor2);
+    ctx.fillStyle = g;
+  } else {
+    ctx.fillStyle = (index % 2 === 0 ? params.shapeColor1 : params.shapeColor2);
+  }
+
+  if(params.strokeEnabled){
+    ctx.strokeStyle = params.strokeColor;
+    ctx.lineWidth = params.strokeWidth;
+  }
+
+  shapePath(currentShape, size, index);
+  ctx.fill();
+  if(params.strokeEnabled) ctx.stroke();
+}
+
+function applyPostFX(){
+  let image = ctx.getImageData(0,0,W,H);
+  const d = image.data;
+
+  if(params.invertColors){
+    for(let i=0;i<d.length;i+=4){ d[i]=255-d[i]; d[i+1]=255-d[i+1]; d[i+2]=255-d[i+2]; }
+  }
+
+  if(params.postFX.includes("threshold")){
+    const t = 128;
+    for(let i=0;i<d.length;i+=4){
+      const v=(d[i]+d[i+1]+d[i+2])/3; const c = v>t?255:0;
+      d[i]=d[i+1]=d[i+2]=c;
+    }
+  }
+
+  if(params.postFX.includes("posterize")){
+    const levels = 5;
+    for(let i=0;i<d.length;i+=4){
+      d[i] = Math.floor(d[i]/255*levels)/levels*255;
+      d[i+1] = Math.floor(d[i+1]/255*levels)/levels*255;
+      d[i+2] = Math.floor(d[i+2]/255*levels)/levels*255;
+    }
+  }
+
+  if(params.postFX.includes("duotone")){
+    const c1 = hexToRGB(params.shapeColor1);
+    const c2 = params.bgGradient ? hexToRGB(params.bgColor2) : hexToRGB(params.bgColor1);
+    for(let i=0;i<d.length;i+=4){
+      const v = (d[i]+d[i+1]+d[i+2])/3/255;
+      d[i]   = c1[0]*(1-v)+c2[0]*v;
+      d[i+1] = c1[1]*(1-v)+c2[1]*v;
+      d[i+2] = c1[2]*(1-v)+c2[2]*v;
+    }
+  }
+
+  if(params.postFX.includes("pixelate")){
+    const scale = 0.2;
+    const temp = document.createElement("canvas"); temp.width=W*scale; temp.height=H*scale;
+    const tctx = temp.getContext("2d"); tctx.putImageData(image,0,0);
+    ctx.imageSmoothingEnabled=false;
+    ctx.drawImage(temp,0,0,temp.width,temp.height,0,0,W,H);
+    return;
+  }
+
+  if(params.postFX.includes("crt")){
+    for(let y=0;y<H;y++){
+      for(let x=0;x<W;x++){
+        const i=(y*W+x)*4;
+        if(y%3===0){ d[i]*=0.9; d[i+1]*=0.9; d[i+2]*=0.9; }
+        if(x%2===0){ d[i+1]*=0.8; d[i+2]*=0.8; }
+      }
+    }
+  }
+
+  if(params.postFX.includes("feedback")){
+    let buf = params.fxBuffers.feedbackCanvas;
+    if(!buf || buf.width !== W || buf.height !== H){
+      buf = document.createElement("canvas");
+      buf.width = W; buf.height = H;
+      params.fxBuffers.feedbackCanvas = buf;
+    }
+    const bctx = buf.getContext("2d");
+    ctx.putImageData(image,0,0);
+    ctx.globalAlpha = 0.85;
+    ctx.drawImage(buf,0,0);
+    ctx.globalAlpha = 1;
+    bctx.drawImage(canvas,0,0);
+    return;
+  }
+
+  ctx.putImageData(image,0,0);
+
+  if(params.postFX.includes("glitch")){
+    const numSlices = 15;
+    const maxOffset = 50;
+    const tempC = document.createElement('canvas');
+    tempC.width = W; tempC.height = H;
+    const tempCtx = tempC.getContext('2d');
+    tempCtx.drawImage(canvas, 0, 0);
+
+    ctx.save();
+    for (let i = 0; i < numSlices; i++) {
+      const sliceH = Math.random() * 60 + 10;
+      const sliceY = Math.random() * (H - sliceH);
+      const offsetX = (Math.random() - 0.5) * maxOffset;
+      ctx.drawImage(tempC, 0, sliceY, W, sliceH, offsetX, sliceY, W, sliceH);
+    }
+    ctx.globalCompositeOperation = "screen";
+    ctx.globalAlpha = 0.4;
+    ctx.drawImage(tempC, 4, 0); 
+    ctx.drawImage(tempC, -4, 0); 
+    ctx.restore();
+  }
+}
+
+function hexToRGB(hex){
+  hex = hex.replace("#","");
+  return [parseInt(hex.substring(0,2),16), parseInt(hex.substring(2,4),16), parseInt(hex.substring(4,6),16)];
+}
+
+function updateAutoGradient() {
+  if (!params.autoGradient) return;
+  const hue = (params.angle * 10) % 360;
+  params.bgColor1 = `hsl(${hue}, 70%, 60%)`;
+  params.bgColor2 = `hsl(${(hue + 90) % 360}, 70%, 60%)`;
+}
+
+function draw(){
+  updateAutoGradient();
+
+  if(params.bgSource==="color"){
+    if(params.bgGradient || params.autoGradient){
+      const g=ctx.createLinearGradient(0,0,W,H);
+      g.addColorStop(0,params.bgColor1); g.addColorStop(1,params.bgColor2);
+      ctx.fillStyle=g;
+    } else ctx.fillStyle=params.bgColor1;
+    ctx.fillRect(0,0,W,H);
+  } else if(videoBg.readyState>=2) {
+    ctx.drawImage(videoBg,0,0,W,H);
+  }
+
+  drawGrid();
+
+  if(params.placement==="scatter" && (!params.particles || params.particles.length!==params.count)){
+    params.particles=[];
+    for(let i=0;i<params.count; i++){
+      params.particles.push({
+        x:Math.random()*W,
+        y:Math.random()*H,
+        vx:(Math.random()-0.5)*params.speed*2,
+        vy:(Math.random()-0.5)*params.speed*2,
+        rainOffset: Math.random() * 1000 
+      });
+    }
+  }
+
+  for(let i=0;i<params.count; i++){
+    ctx.save();
+    let x=0,y=0;
+    
+    if(params.placement==="scatter"){
+      const p = params.particles[i]; 
+      if(params.animation !== "rain"){
+          p.x+=p.vx; p.y+=p.vy;
+          if(p.x>W||p.x<0)p.vx*=-1; if(p.y>H||p.y<0)p.vy*=-1;
+          x=p.x-W/2; y=p.y-H/2;
+      } else {
+          x=p.x-W/2; y=p.y-H/2;
+      }
+    } else if(params.placement==="vertical") y=((i/params.count)-0.5)*H;
+    else if(params.placement==="horizontal") x=((i/params.count)-0.5)*W;
+
+    let sz=params.size;
+
+    if(params.animation==="bounce"){
+        y += Math.sin(params.angle * 2 + i * 0.2) * (H * 0.15);
+    }
+    else if(params.animation==="pulse"){
+        const pulseSpeed = 2 + (i % 5) * 0.5; 
+        const scaleFactor = 0.5 + Math.abs(Math.sin(params.angle * pulseSpeed)) * 0.5;
+        sz *= scaleFactor;
+    }
+    else if(params.animation==="wave"){
+        ctx.rotate(Math.sin(params.angle * 3 + i) * 0.3);
+        const flap = Math.sin(params.angle * 4 + i);
+        ctx.scale(1 + flap*0.1, 1 - flap*0.1);
+    }
+    else if(params.animation==="rain"){
+        let rOffset = params.particles[i] ? params.particles[i].rainOffset : i * 50;
+        let fallDistance = (params.angle * params.speed * 20 + rOffset) % (H + params.size * 2);
+        y = -H/2 - params.size + fallDistance; 
+    }
+
+    ctx.translate(W/2+x, H/2+y);
+    ctx.rotate(Math.sin(params.angle)*0.1);
+
+    drawShapeVisual(sz, i); 
+
+    ctx.restore();
+  }
+
+  params.angle += params.speed * 0.02;
+
+  if(params.grainEnabled){
+    let img = ctx.getImageData(0,0,W,H), d = img.data;
+    for(let i = 0; i < d.length; i += 4){
+      let n = (Math.random()-0.5)*60;
+      d[i] += n; d[i+1] += n; d[i+2] += n;
+    }
+    ctx.putImageData(img,0,0);
+  }
+
+  applyPostFX();
+  requestAnimationFrame(draw);
+}
+
+window.addEventListener("resize", () => {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  params.fxBuffers = {};
+});
+
+draw();
+
+window.addEventListener("message", async e => {
+  const d = e.data;
+  if(!d) return;
+  if(d.type==="controller_ping") e.source.postMessage({type:"visual_handshake"},"*");
+
+  Object.assign(params, d);
+  if("bgSource" in d) await initCamera(d.bgSource);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>blackbox</title>
+<style>
+:root {
+  --color-btnface: #c0c0c0;
+  --color-highlight: #e4e4e4;
+  --color-shadow: #808080;
+  --color-darkshadow: #696969;
+  --color-window: #ffffff;
+  --color-windowtext: #000000;
+  --color-btntext: #000000;
+  --color-graytext: #696969;
+  --color-bg: #c0c0c0;
+  --color-titlebg: #000080;
+  --color-titletext: #ffffff;
+}
+
+body {
+  margin: 0;
+  padding: 20px;
+  font-family: "MS Sans Serif", "Microsoft Sans Serif", Tahoma, Arial, sans-serif;
+  font-size: 11px;
+  background-color: var(--color-bg);
+  color: var(--color-windowtext);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+#controller {
+  width: 100%;
+  max-width: 420px;
+  padding: 12px;
+  background: var(--color-window);
+  border-top: 2px solid var(--color-highlight);
+  border-left: 2px solid var(--color-highlight);
+  border-bottom: 2px solid var(--color-shadow);
+  border-right: 2px solid var(--color-shadow);
+  box-shadow:
+    3px 3px 0 0 var(--color-shadow),
+    5px 5px 0 0 var(--color-darkshadow);
+}
+
+h2 { 
+  margin: -12px -12px 20px -12px;
+  padding: 4px 12px;
+  text-align: left;
+  background: var(--color-titlebg);
+  color: var(--color-titletext);
+  font-weight: bold;
+  font-size: 12px;
+  border-bottom: 1px solid #0040a0;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.groupbox {
+  margin: 12px 0 12px 0;
+  padding: 8px 12px 8px 12px;
+  border-top: 1px solid var(--color-highlight);
+  border-left: 1px solid var(--color-highlight);
+  border-bottom: 1px solid var(--color-shadow);
+  border-right: 1px solid var(--color-shadow);
+}
+
+.groupbox legend {
+  color: var(--color-windowtext);
+  font-weight: bold;
+  font-size: 11px;
+  padding: 0 6px 0 4px;
+  background: var(--color-window);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.subgroup {
+  margin: 6px 0 0 20px;
+}
+
+label { 
+  display: block; 
+  margin: 8px 0 4px 0; 
+  font-size: 11px;
+}
+
+input[type="number"], 
+input[type="range"], 
+select {
+  width: 100%; 
+  padding: 2px 4px; 
+  background: var(--color-window); 
+  color: var(--color-windowtext); 
+  font-family: inherit;
+  font-size: 11px; 
+  box-sizing: border-box;
+  border-top: 1px solid var(--color-shadow);
+  border-left: 1px solid var(--color-shadow);
+  border-bottom: 1px solid var(--color-highlight);
+  border-right: 1px solid var(--color-highlight);
+}
+
+input[type="color"] {
+  height: 22px;
+  width: 50px;
+  padding: 1px;
+}
+
+input[type="checkbox"] {
+  position: relative;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  background: var(--color-window);
+  border-top: 1px solid var(--color-shadow);
+  border-left: 1px solid var(--color-shadow);
+  border-bottom: 1px solid var(--color-highlight);
+  border-right: 1px solid var(--color-highlight);
+  vertical-align: middle;
+  margin: 1px 6px 0 0;
+  cursor: pointer;
+}
+
+input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 3px;
+  width: 5px;
+  height: 9px;
+  border: solid var(--color-windowtext);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+input[type="range"] { 
+  height: 20px;
+  background: transparent;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  background: var(--color-btnface);
+  border-top: 1px solid var(--color-highlight);
+  border-bottom: 1px solid var(--color-shadow);
+}
+input[type="range"]::-webkit-slider-thumb { 
+  -webkit-appearance: none; 
+  width: 13px; 
+  height: 15px; 
+  background: var(--color-btnface);
+  border-top: 1px solid var(--color-highlight);
+  border-left: 1px solid var(--color-highlight);
+  border-bottom: 1px solid var(--color-shadow);
+  border-right: 1px solid var(--color-shadow);
+  margin-top: -5px; 
+  cursor: pointer;
+}
+
+button { 
+  width: 100%; 
+  padding: 5px 12px; 
+  background: var(--color-btnface); 
+  color: var(--color-btntext); 
+  font: inherit;
+  font-weight: normal; 
+  cursor: pointer; 
+  margin: 4px 0;
+  text-align: center;
+  border-top: 1px solid var(--color-highlight);
+  border-left: 1px solid var(--color-highlight);
+  border-bottom: 1px solid var(--color-shadow);
+  border-right: 1px solid var(--color-shadow);
+}
+button:hover { 
+  background: #d4d4d4; 
+}
+button:active { 
+  border-top-color: var(--color-shadow);
+  border-left-color: var(--color-shadow);
+  border-bottom-color: var(--color-highlight);
+  border-right-color: var(--color-highlight);
+  padding: 6px 11px 4px 13px;
+  margin: 5px 0 3px 0;
+}
+
+.colorPreview {
+  display: inline-block; 
+  width: 18px; 
+  height: 18px; 
+  margin-left: 5px; 
+  vertical-align: middle; 
+  border-top: 1px solid var(--color-shadow);
+  border-left: 1px solid var(--color-shadow);
+  border-bottom: 1px solid var(--color-highlight);
+  border-right: 1px solid var(--color-highlight);
+}
+
+.hidden { 
+  display: none; 
+}
+select[multiple] { 
+  height: 100px; 
+}
+</style>
+</head>
+<body>
+<div id="controller">
+<h2>blackbox3000</h2>
+
+<fieldset class="groupbox">
+<legend>SYSTEM</legend>
+<button id="openVisual">[ OPEN VISUAL ]</button>
+<button id="randomize">[ I'M FEELING LUCKY ]</button>
+
+<div id="bgColorControls">
+  <label>BG Color A:
+    <input type="color" id="bgColor1" value="#111111">
+    <span id="bgColor1Preview" class="colorPreview"></span>
+  </label>
+  <label>BG Color B:
+    <input type="color" id="bgColor2" value="#440044">
+    <span id="bgColor2Preview" class="colorPreview"></span>
+  </label>
+  <label><input type="checkbox" id="bgGradient"> Gradient Mode</label>
+  <label><input type="checkbox" id="autoGradient"> Auto Cycle</label>
+</div>
+
+<label><input type="checkbox" id="gridEnabled"> Show Grid</label>
+<div id="gridControls" class="subgroup hidden">
+  <label>Grid Color:
+    <input type="color" id="gridColor" value="#222222">
+    <span id="gridColorPreview" class="colorPreview"></span>
+  </label>
+  <label>Spacing: <input type="range" id="gridSpacing" min="5" max="200" value="50"></label>
+</div>
+</fieldset>
+
+<fieldset class="groupbox">
+<legend>OBJECT</legend>
+<label>Shape Style: 
+  <input type="range" id="shapes" min="0" max="5" value="0" step="1" style="width:60%; display:inline-block; margin-left:10px;"> 
+  <span id="shapeLabel" style="margin-left:10px;">[NONE]</span>
+</label>
+
+<label>Size: <input type="range" id="size" min="10" max="500" value="120"></label>
+<label>Quantity: <input type="range" id="count" min="0" max="200" value="12"></label>
+</fieldset>
+
+<fieldset class="groupbox">
+<legend>STYLE</legend>
+<label>Fill Color A:
+  <input type="color" id="shapeColor1" value="#00ffff">
+  <span id="shapeColor1Preview" class="colorPreview"></span>
+</label>
+<label>Fill Color B:
+  <input type="color" id="shapeColor2" value="#ff00ff">
+  <span id="shapeColor2Preview" class="colorPreview"></span>
+</label>
+<label><input type="checkbox" id="shapeGradient" checked> Shape Gradient</label>
+
+<label><input type="checkbox" id="strokeEnabled" checked> Stroke Enabled</label>
+<label>Stroke Color:
+  <input type="color" id="strokeColor" value="#ffffff">
+  <span id="strokeColorPreview" class="colorPreview"></span>
+</label>
+<label>Width: <input type="range" id="strokeWidth" min="1" max="20" value="3"></label>
+</fieldset>
+
+<fieldset class="groupbox">
+<legend>ANIMATION</legend>
+<label>Placement:
+  <select id="placement">
+    <option value="normal">[CENTER]</option>
+    <option value="scatter">[SCATTER]</option>
+    <option value="vertical">[STACK V]</option>
+    <option value="horizontal">[STACK H]</option>
+  </select>
+</label>
+<label>Motion:
+  <select id="animation">
+    <option value="bounce">[BOUNCE]</option>
+    <option value="pulse">[PULSE]</option>
+    <option value="wave">[WAVE]</option>
+    <option value="rain">[RAIN]</option>
+  </select>
+</label>
+<label>Speed: <input type="range" id="speed" min="1" max="20" value="5"></label>
+<label><input type="checkbox" id="invertColors"> Invert Colors</label>
+</fieldset>
+
+<fieldset class="groupbox">
+<legend>POST FX</legend>
+<label>Select FX (Hold Ctrl/Cmd):
+  <select id="postFX" multiple size="5" style="margin-top: 5px;">
+    <option value="none" selected>None</option>
+    <option value="pixelate">Pixelate</option>
+    <option value="crt">CRT</option>
+    <option value="threshold">Threshold</option>
+    <option value="posterize">Posterize</option>
+    <option value="feedback">Feedback</option>
+    <option value="glitch">Glitch</option>
+    <option value="duotone">Duotone</option>
+  </select>
+</label>
+<label><input type="checkbox" id="grainEnabled" checked> Film Grain</label>
+</fieldset>
+
+<script>
+let visualWindow = null;
+
+const shapeNames = ["✕", "■", "✦", "⏺", "✴", "⌇"];
+
+const allFX = ["none", "pixelate", "crt", "threshold", "posterize", "feedback", "glitch", "duotone"];
+
+// Open Visual
+document.getElementById("openVisual").addEventListener("click", () => {
+  if(!visualWindow || visualWindow.closed){
+    visualWindow = window.open("visual.html", "visual", "width=1200,height=800");
+  }
+});
+
+// ==================== IMPROVED RANDOMIZER ====================
+document.getElementById("randomize").addEventListener("click", () => {
+  const r = () => Math.random();
+  const randInt = (min, max) => Math.floor(min + r() * (max - min + 1));
+
+  // Core visual params
+  document.getElementById("shapes").value = randInt(1, 5);
+  document.getElementById("size").value = randInt(40, 280);
+  document.getElementById("count").value = randInt(3, 48);
+  document.getElementById("speed").value = randInt(1, 13);           // ← varied speed (not always fast)
+
+  // Colors
+  document.getElementById("shapeColor1").value = '#' + Math.floor(r()*16777215).toString(16).padStart(6,'0');
+  document.getElementById("shapeColor2").value = '#' + Math.floor(r()*16777215).toString(16).padStart(6,'0');
+  document.getElementById("bgColor1").value   = '#' + Math.floor(r()*16777215).toString(16).padStart(6,'0');
+  document.getElementById("bgColor2").value   = '#' + Math.floor(r()*16777215).toString(16).padStart(6,'0');
+  document.getElementById("strokeColor").value = '#' + Math.floor(r()*16777215).toString(16).padStart(6,'0');
+  document.getElementById("gridColor").value   = '#' + Math.floor(r()*16777215).toString(16).padStart(6,'0');
+
+  // Booleans
+  document.getElementById("shapeGradient").checked = r() > 0.3;
+  document.getElementById("bgGradient").checked    = r() > 0.45;
+  document.getElementById("autoGradient").checked  = r() > 0.8;
+  document.getElementById("strokeEnabled").checked = r() > 0.25;
+  document.getElementById("grainEnabled").checked  = r() > 0.25;
+  document.getElementById("invertColors").checked  = r() > 0.7;
+  document.getElementById("gridEnabled").checked   = r() > 0.65;
+
+  // Grid spacing
+  document.getElementById("gridSpacing").value = randInt(25, 120);
+
+  // Stroke width
+  document.getElementById("strokeWidth").value = randInt(1, 9);
+
+  // Placement & Animation
+  const placements = ["normal","scatter","vertical","horizontal"];
+  const animations = ["bounce","pulse","wave","rain"];
+  document.getElementById("placement").value = placements[randInt(0,3)];
+  document.getElementById("animation").value = animations[randInt(0,3)];
+
+  // === RANDOM FX (much better logic) ===
+  const fxSelect = document.getElementById("postFX");
+  // Clear current selection
+  Array.from(fxSelect.options).forEach(opt => opt.selected = false);
+
+  const numFX = r() < 0.35 ? 2 : (r() < 0.7 ? 3 : 5); // alter this so fx are evenly shown
+
+  // Sometimes include "none", sometimes not
+  if (r() < 0.25) {
+    fxSelect.options[0].selected = true; // "none"
+  } else {
+    const shuffled = allFX.filter(f => f !== "none").sort(() => 0.5 - r());
+    for (let i = 0; i < numFX && i < shuffled.length; i++) {
+      const fxValue = shuffled[i];
+      const option = Array.from(fxSelect.options).find(opt => opt.value === fxValue);
+      if (option) option.selected = true;
+    }
+  }
+
+  // Trigger all inputs
+  const event = new Event('input');
+  document.querySelectorAll('input, select').forEach(el => {
+    el.dispatchEvent(event);
+  });
+
+  // Update shape label
+  const shapeVal = parseInt(document.getElementById("shapes").value);
+  document.getElementById("shapeLabel").textContent = `[${shapeNames[shapeVal]}]`;
+});
+
+// Shape slider label
+const shapesSlider = document.getElementById("shapes");
+const shapeLabel = document.getElementById("shapeLabel");
+shapesSlider.addEventListener("input", e => {
+  const val = Math.floor(parseFloat(e.target.value));
+  shapeLabel.textContent = `[${shapeNames[val]}]`;
+});
+
+// Send parameters to visual
+const inputs = [
+  "shapes","size","count","shapeColor1","shapeColor2","shapeGradient",
+  "bgColor1","bgColor2","bgGradient","autoGradient","invertColors","animation",
+  "placement","speed","gridEnabled","gridColor","gridSpacing","grainEnabled",
+  "strokeColor","strokeWidth","strokeEnabled","postFX"
+];
+
+inputs.forEach(id => {
+  const el = document.getElementById(id);
+  if (!el) return;
+
+  el.addEventListener("input", () => {
+    let value;
+    if (el.type === "checkbox") value = el.checked;
+    else if (el.type === "range" || el.type === "number") value = parseFloat(el.value);
+    else if (id === "postFX") value = Array.from(el.selectedOptions).map(opt => opt.value);
+    else value = el.value;
+
+    if (visualWindow && !visualWindow.closed) {
+      visualWindow.postMessage({[id]: value}, "*");
+    }
+  });
+});
+
+// Color previews
+["bgColor1","bgColor2","shapeColor1","shapeColor2","gridColor","strokeColor"].forEach(id => {
+  const input = document.getElementById(id);
+  const preview = document.getElementById(id + "Preview");
+  if (input && preview) {
+    input.addEventListener("input", e => preview.style.backgroundColor = e.target.value);
+    preview.style.backgroundColor = input.value;
+  }
+});
+
+// Grid toggle
+const gridEnabled = document.getElementById("gridEnabled");
+const gridControls = document.getElementById("gridControls");
+gridEnabled.addEventListener("change", () => {
+  gridControls.classList.toggle("hidden", !gridEnabled.checked);
+});
+
+// Initial setup
+gridControls.classList.toggle("hidden", !gridEnabled.checked);
+shapeLabel.textContent = `[${shapeNames[0]}]`;
+</script>
+</body>
+</html>
