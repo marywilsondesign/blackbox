@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>blackbox</title>
+<title>blackbox controller</title>
+<link rel="icon" type="image/png" href="favicon.png">
 <style>
 :root {
   --color-btnface: #c0c0c0;
@@ -50,13 +51,20 @@ h2 {
   margin: -12px -12px 20px -12px;
   padding: 4px 12px;
   text-align: left;
-  background: var(--color-titlebg);
   color: var(--color-titletext);
-  font-weight: bold;
+  font-weight: normal;
   font-size: 12px;
-  border-bottom: 1px solid #0040a0;
   text-transform: uppercase;
   letter-spacing: 1px;
+
+  background: linear-gradient(
+    to right,
+    #0a2a8a 0%,
+    #1f5bd6 45%,
+    #5296fb 100%
+  );
+
+  border-bottom: 1px solid #0a2a8a;
 }
 
 .groupbox {
@@ -206,11 +214,40 @@ button:active {
 select[multiple] { 
   height: 100px; 
 }
+
+.system-preamble {
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  font-size: 10px;
+  line-height: 1.35;
+  color: var(--color-windowtext);
+  background: #f4f4f4;
+  border-top: 1px solid var(--color-shadow);
+  border-left: 1px solid var(--color-shadow);
+  border-bottom: 1px solid var(--color-highlight);
+  border-right: 1px solid var(--color-highlight);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.system-preamble .warning {
+  color: #800000;
+  font-weight: bold;
+}
+
 </style>
 </head>
 <body>
 <div id="controller">
-<h2>blackbox3000</h2>
+<h2>blackbox controller</h2>
+
+<div class="system-preamble">
+  'OPEN VISUAL' IS THE LIVE CONTROLLED OUTPUT.<br><br>
+  ADJUST PARAMETERS BELOW — CHANGES ARE REFLECTED IN REAL TIME IN THE VISUAL OUTPUT WINDOW (DESIGNED FOR PROJECTION / DESKTOP VIEWING).<br><br>
+  <span class="warning">
+    NOTE: THIS EXPERIENCE IS NOT OPTIMIZED FOR MOBILE DEVICES.
+  </span>
+</div>
 
 <fieldset class="groupbox">
 <legend>SYSTEM</legend>
