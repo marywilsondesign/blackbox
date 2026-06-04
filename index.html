@@ -56,14 +56,7 @@ h2 {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 1px;
-
-  background: linear-gradient(
-    to right,
-    #0a2a8a 0%,
-    #1f5bd6 45%,
-    #5296fb 100%
-  );
-
+  background: linear-gradient(to right, #0a2a8a 0%, #1f5bd6 45%, #5296fb 100%);
   border-bottom: 1px solid #0a2a8a;
 }
 
@@ -86,9 +79,7 @@ h2 {
   letter-spacing: 0.5px;
 }
 
-.subgroup {
-  margin: 6px 0 0 20px;
-}
+.subgroup { margin: 6px 0 0 20px; }
 
 label { 
   display: block; 
@@ -96,9 +87,7 @@ label {
   font-size: 11px;
 }
 
-input[type="number"], 
-input[type="range"], 
-select {
+input[type="number"], input[type="range"], select {
   width: 100%; 
   padding: 2px 4px; 
   background: var(--color-window); 
@@ -121,7 +110,6 @@ input[type="color"] {
 input[type="checkbox"] {
   position: relative;
   appearance: none;
-  -webkit-appearance: none;
   width: 16px;
   height: 16px;
   background: var(--color-window);
@@ -137,18 +125,15 @@ input[type="checkbox"] {
 input[type="checkbox"]:checked::after {
   content: "";
   position: absolute;
-  top: 2px;
-  left: 3px;
-  width: 5px;
-  height: 9px;
+  top: 2px; left: 3px;
+  width: 5px; height: 9px;
   border: solid var(--color-windowtext);
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
 
 input[type="range"] { 
-  height: 20px;
-  background: transparent;
+  height: 20px; background: transparent;
 }
 input[type="range"]::-webkit-slider-runnable-track {
   height: 6px;
@@ -158,8 +143,7 @@ input[type="range"]::-webkit-slider-runnable-track {
 }
 input[type="range"]::-webkit-slider-thumb { 
   -webkit-appearance: none; 
-  width: 13px; 
-  height: 15px; 
+  width: 13px; height: 15px; 
   background: var(--color-btnface);
   border-top: 1px solid var(--color-highlight);
   border-left: 1px solid var(--color-highlight);
@@ -184,9 +168,7 @@ button {
   border-bottom: 1px solid var(--color-shadow);
   border-right: 1px solid var(--color-shadow);
 }
-button:hover { 
-  background: #d4d4d4; 
-}
+button:hover { background: #d4d4d4; }
 button:active { 
   border-top-color: var(--color-shadow);
   border-left-color: var(--color-shadow);
@@ -198,22 +180,14 @@ button:active {
 
 .colorPreview {
   display: inline-block; 
-  width: 18px; 
-  height: 18px; 
+  width: 18px; height: 18px; 
   margin-left: 5px; 
   vertical-align: middle; 
-  border-top: 1px solid var(--color-shadow);
-  border-left: 1px solid var(--color-shadow);
-  border-bottom: 1px solid var(--color-highlight);
-  border-right: 1px solid var(--color-highlight);
+  border: 1px solid #808080;
 }
 
-.hidden { 
-  display: none; 
-}
-select[multiple] { 
-  height: 100px; 
-}
+.hidden { display: none; }
+select[multiple] { height: 100px; }
 
 .system-preamble {
   margin-bottom: 12px;
@@ -222,10 +196,7 @@ select[multiple] {
   line-height: 1.35;
   color: var(--color-windowtext);
   background: #f4f4f4;
-  border-top: 1px solid var(--color-shadow);
-  border-left: 1px solid var(--color-shadow);
-  border-bottom: 1px solid var(--color-highlight);
-  border-right: 1px solid var(--color-highlight);
+  border: 1px solid #808080;
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
@@ -235,6 +206,16 @@ select[multiple] {
   font-weight: bold;
 }
 
+#micSyncLabel { margin-top:12px; font-weight:bold; font-size: 12px; }
+#micStatus { font-size:10px; margin:4px 0 8px 22px; min-height: 14px; }
+#beatIndicator {
+  font-size: 10px;
+  color: #ff8800;
+  font-weight: bold;
+  margin-left: 22px;
+  opacity: 0;
+  transition: opacity 0.4s;
+}
 </style>
 </head>
 <body>
@@ -243,16 +224,21 @@ select[multiple] {
 
 <div class="system-preamble">
   'OPEN VISUAL' IS THE LIVE CONTROLLED OUTPUT.<br><br>
-  ADJUST PARAMETERS BELOW — CHANGES ARE REFLECTED IN REAL TIME IN THE VISUAL OUTPUT WINDOW (DESIGNED FOR PROJECTION / DESKTOP VIEWING).<br><br>
-  <span class="warning">
-    NOTE: THIS EXPERIENCE IS NOT OPTIMIZED FOR MOBILE DEVICES.
-  </span>
+  ADJUST PARAMETERS BELOW — CHANGES ARE REFLECTED IN REAL TIME IN THE VISUAL OUTPUT WINDOW.<br><br>
+  <span class="warning">NOTE: THIS EXPERIENCE IS NOT OPTIMIZED FOR MOBILE DEVICES.</span>
 </div>
 
 <fieldset class="groupbox">
 <legend>SYSTEM</legend>
 <button id="openVisual">[ OPEN VISUAL ]</button>
 <button id="randomize">[ I'M FEELING LUCKY ]</button>
+
+<label id="micSyncLabel">
+  <input type="checkbox" id="micSyncEnabled"> 
+  MIC SYNCOPATION MODE — MUSIC REACTIVE
+</label>
+<div id="micStatus"></div>
+<div id="beatIndicator">♪ BEAT DETECTED ♪</div>
 
 <div id="bgColorControls">
   <label>BG Color A:
@@ -283,7 +269,6 @@ select[multiple] {
   <input type="range" id="shapes" min="0" max="5" value="0" step="1" style="width:60%; display:inline-block; margin-left:10px;"> 
   <span id="shapeLabel" style="margin-left:10px;">[NONE]</span>
 </label>
-
 <label>Size: <input type="range" id="size" min="10" max="500" value="120"></label>
 <label>Quantity: <input type="range" id="count" min="0" max="200" value="12"></label>
 </fieldset>
@@ -349,10 +334,52 @@ select[multiple] {
 
 <script>
 let visualWindow = null;
+let audioContext = null;
+let analyser = null;
+let micStream = null;
 
 const shapeNames = ["✕", "■", "✦", "⏺", "✴", "⌇"];
-
 const allFX = ["none", "pixelate", "crt", "threshold", "posterize", "feedback", "glitch", "duotone"];
+
+const micToggle = document.getElementById("micSyncEnabled");
+const micStatus = document.getElementById("micStatus");
+const beatIndicator = document.getElementById("beatIndicator");
+
+micToggle.addEventListener("change", async () => {
+  if (micToggle.checked) {
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioContext.createMediaStreamSource(micStream);
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.65;
+      source.connect(analyser);
+      
+      micStatus.textContent = "✅ MIC CONNECTED — BASS / MUSIC REACTIVE";
+      micStatus.style.color = "#00cc00";
+      
+      if (visualWindow && !visualWindow.closed) {
+        visualWindow.postMessage({ micSyncEnabled: true }, "*");
+      }
+    } catch (e) {
+      micStatus.textContent = "❌ MIC ACCESS DENIED";
+      micStatus.style.color = "#cc0000";
+      micToggle.checked = false;
+    }
+  } else {
+    if (micStream) micStream.getTracks().forEach(t => t.stop());
+    if (audioContext) audioContext.close();
+    analyser = null;
+    micStream = null;
+    micStatus.textContent = "";
+    beatIndicator.style.opacity = 0;
+    
+    if (visualWindow && !visualWindow.closed) {
+      visualWindow.postMessage({ micSyncEnabled: false }, "*");
+    }
+  }
+});
 
 // Open Visual
 document.getElementById("openVisual").addEventListener("click", () => {
@@ -361,18 +388,16 @@ document.getElementById("openVisual").addEventListener("click", () => {
   }
 });
 
-// ==================== IMPROVED RANDOMIZER ====================
+// Randomizer (unchanged)
 document.getElementById("randomize").addEventListener("click", () => {
   const r = () => Math.random();
   const randInt = (min, max) => Math.floor(min + r() * (max - min + 1));
 
-  // Core visual params
   document.getElementById("shapes").value = randInt(1, 5);
   document.getElementById("size").value = randInt(40, 280);
   document.getElementById("count").value = randInt(3, 48);
-  document.getElementById("speed").value = randInt(1, 13);           // ← varied speed (not always fast)
+  document.getElementById("speed").value = randInt(1, 13);
 
-  // Colors
   document.getElementById("shapeColor1").value = '#' + Math.floor(r()*16777215).toString(16).padStart(6,'0');
   document.getElementById("shapeColor2").value = '#' + Math.floor(r()*16777215).toString(16).padStart(6,'0');
   document.getElementById("bgColor1").value   = '#' + Math.floor(r()*16777215).toString(16).padStart(6,'0');
@@ -380,7 +405,6 @@ document.getElementById("randomize").addEventListener("click", () => {
   document.getElementById("strokeColor").value = '#' + Math.floor(r()*16777215).toString(16).padStart(6,'0');
   document.getElementById("gridColor").value   = '#' + Math.floor(r()*16777215).toString(16).padStart(6,'0');
 
-  // Booleans
   document.getElementById("shapeGradient").checked = r() > 0.3;
   document.getElementById("bgGradient").checked    = r() > 0.45;
   document.getElementById("autoGradient").checked  = r() > 0.8;
@@ -389,49 +413,33 @@ document.getElementById("randomize").addEventListener("click", () => {
   document.getElementById("invertColors").checked  = r() > 0.7;
   document.getElementById("gridEnabled").checked   = r() > 0.65;
 
-  // Grid spacing
   document.getElementById("gridSpacing").value = randInt(25, 120);
-
-  // Stroke width
   document.getElementById("strokeWidth").value = randInt(1, 9);
 
-  // Placement & Animation
   const placements = ["normal","scatter","vertical","horizontal"];
   const animations = ["bounce","pulse","wave","rain"];
   document.getElementById("placement").value = placements[randInt(0,3)];
   document.getElementById("animation").value = animations[randInt(0,3)];
 
-  // === RANDOM FX (much better logic) ===
   const fxSelect = document.getElementById("postFX");
-  // Clear current selection
   Array.from(fxSelect.options).forEach(opt => opt.selected = false);
-
-  const numFX = r() < 0.35 ? 2 : (r() < 0.7 ? 3 : 5); // alter this so fx are evenly shown
-
-  // Sometimes include "none", sometimes not
-  if (r() < 0.25) {
-    fxSelect.options[0].selected = true; // "none"
-  } else {
+  const numFX = r() < 0.35 ? 2 : (r() < 0.7 ? 3 : 5);
+  if (r() < 0.25) fxSelect.options[0].selected = true;
+  else {
     const shuffled = allFX.filter(f => f !== "none").sort(() => 0.5 - r());
     for (let i = 0; i < numFX && i < shuffled.length; i++) {
-      const fxValue = shuffled[i];
-      const option = Array.from(fxSelect.options).find(opt => opt.value === fxValue);
+      const option = Array.from(fxSelect.options).find(opt => opt.value === shuffled[i]);
       if (option) option.selected = true;
     }
   }
 
-  // Trigger all inputs
   const event = new Event('input');
-  document.querySelectorAll('input, select').forEach(el => {
-    el.dispatchEvent(event);
-  });
+  document.querySelectorAll('input, select').forEach(el => el.dispatchEvent(event));
 
-  // Update shape label
   const shapeVal = parseInt(document.getElementById("shapes").value);
   document.getElementById("shapeLabel").textContent = `[${shapeNames[shapeVal]}]`;
 });
 
-// Shape slider label
 const shapesSlider = document.getElementById("shapes");
 const shapeLabel = document.getElementById("shapeLabel");
 shapesSlider.addEventListener("input", e => {
@@ -439,18 +447,11 @@ shapesSlider.addEventListener("input", e => {
   shapeLabel.textContent = `[${shapeNames[val]}]`;
 });
 
-// Send parameters to visual
-const inputs = [
-  "shapes","size","count","shapeColor1","shapeColor2","shapeGradient",
-  "bgColor1","bgColor2","bgGradient","autoGradient","invertColors","animation",
-  "placement","speed","gridEnabled","gridColor","gridSpacing","grainEnabled",
-  "strokeColor","strokeWidth","strokeEnabled","postFX"
-];
+const inputs = ["shapes","size","count","shapeColor1","shapeColor2","shapeGradient","bgColor1","bgColor2","bgGradient","autoGradient","invertColors","animation","placement","speed","gridEnabled","gridColor","gridSpacing","grainEnabled","strokeColor","strokeWidth","strokeEnabled","postFX"];
 
 inputs.forEach(id => {
   const el = document.getElementById(id);
   if (!el) return;
-
   el.addEventListener("input", () => {
     let value;
     if (el.type === "checkbox") value = el.checked;
@@ -464,7 +465,6 @@ inputs.forEach(id => {
   });
 });
 
-// Color previews
 ["bgColor1","bgColor2","shapeColor1","shapeColor2","gridColor","strokeColor"].forEach(id => {
   const input = document.getElementById(id);
   const preview = document.getElementById(id + "Preview");
@@ -474,16 +474,20 @@ inputs.forEach(id => {
   }
 });
 
-// Grid toggle
 const gridEnabled = document.getElementById("gridEnabled");
 const gridControls = document.getElementById("gridControls");
-gridEnabled.addEventListener("change", () => {
-  gridControls.classList.toggle("hidden", !gridEnabled.checked);
-});
+gridEnabled.addEventListener("change", () => gridControls.classList.toggle("hidden", !gridEnabled.checked));
 
-// Initial setup
 gridControls.classList.toggle("hidden", !gridEnabled.checked);
 shapeLabel.textContent = `[${shapeNames[0]}]`;
+
+// Expose beat indicator function for visual window to call
+window.showBeat = function() {
+  if (beatIndicator) {
+    beatIndicator.style.opacity = 1;
+    setTimeout(() => { beatIndicator.style.opacity = 0; }, 180);
+  }
+};
 </script>
 </body>
 </html>

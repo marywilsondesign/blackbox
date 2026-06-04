@@ -52,8 +52,17 @@ const params = {
   strokeColor: "#ffffff",
   strokeWidth: 3,
   strokeEnabled: true,
-  grainEnabled: true
+  grainEnabled: true,
+  micSyncEnabled: false,
+  beatLevel: 0,
+  energy: 0
 };
+
+let analyser = null;
+let audioData = new Uint8Array(512);
+let bassLevel = 0;
+let beatPulse = 0;
+let lastBeatTime = 0;
 
 const shapeTypes = ["none", "square", "random", "circle", "starburst", "worm"];
 
@@ -88,12 +97,9 @@ function shapePath(type, size, index){
     const seed = index * 100; 
     for(let i=0; i<numPoints; i++){
       const angle = (i / numPoints) * Math.PI * 2 - Math.PI/2;
-      const r = (size/2) * (0.3 + detRandom(seed + i) * 0.6);
-      const angleJitter = (detRandom(seed + i + 1000) - 0.5) * 0.2;
-      points.push({
-        x: Math.cos(angle + angleJitter) * r,
-        y: Math.sin(angle + angleJitter) * r
-      });
+      const r = (size/2) * (0.3 + detRandom(seed + i) * 0.7);
+      const angleJitter = (detRandom(seed + i + 1000) - 0.5) * 0.25;
+      points.push({ x: Math.cos(angle + angleJitter) * r, y: Math.sin(angle + angleJitter) * r });
     }
     const firstMidX = (points[0].x + points[numPoints-1].x) / 2;
     const firstMidY = (points[0].y + points[numPoints-1].y) / 2;
@@ -109,8 +115,8 @@ function shapePath(type, size, index){
   } 
   else if(type==="starburst"){
     const spikes = 16;
-    const inner = size * 0.22;
-    const outer = size * 0.52;
+    const inner = size * 0.18;
+    const outer = size * 0.55;
     for(let i = 0; i < spikes * 2; i++){
       const radius = (i % 2 === 0) ? outer : inner;
       const a = (i * Math.PI) / spikes - Math.PI/2;
@@ -122,17 +128,17 @@ function shapePath(type, size, index){
     ctx.closePath();
   } 
   else if(type==="worm"){
-    const segments = 20;
-    const amplitude = size * 0.15;
-    const length = size;
+    const segments = 24;
+    const amplitude = size * 0.22;
+    const length = size * 1.1;
     ctx.moveTo(-length/2, 0);
     for(let i = 1; i <= segments; i++){
       const t = i / segments;
       const x = -length/2 + t * length;
-      const y = Math.sin(t * Math.PI * 2 + params.angle) * amplitude;
+      const y = Math.sin(t * Math.PI * 2.5 + params.angle) * amplitude;
       const prevT = (i - 1) / segments;
       const prevX = -length/2 + prevT * length;
-      const prevY = Math.sin(prevT * Math.PI * 2 + params.angle) * amplitude;
+      const prevY = Math.sin(prevT * Math.PI * 2.5 + params.angle) * amplitude;
       const cx = (prevX + x) / 2;
       const cy = (prevY + y) / 2;
       ctx.quadraticCurveTo(prevX, prevY, cx, cy);
@@ -150,12 +156,57 @@ function drawGrid(){
   ctx.restore();
 }
 
+function updateAudio() {
+  if (!params.micSyncEnabled || !analyser) {
+    params.beatLevel = 0;
+    beatPulse = 0;
+    return;
+  }
+
+  analyser.getByteFrequencyData(audioData);
+
+  // HEAVY BASS focus (0-80Hz range)
+  let bass = 0;
+  for (let i = 2; i < 22; i++) bass += audioData[i];
+  bass = bass / 20;
+
+  // Very light mid check (to avoid complete silence)
+  let mid = 0;
+  for (let i = 40; i < 90; i++) mid += audioData[i];
+  mid = mid / 50;
+
+  const normalizedBass = bass / 255;
+  const normalizedMid = mid / 255;
+
+  bassLevel = bassLevel * 0.55 + normalizedBass * 0.45;
+
+  const now = Date.now();
+  const strongBeat = normalizedBass > 0.68 && normalizedMid < 0.55 && (now - lastBeatTime > 160);
+
+  if (strongBeat) {
+    beatPulse = 1.8;
+    lastBeatTime = now;
+    if (typeof window.showBeat === "function") window.showBeat();
+  }
+
+  beatPulse *= 0.68;
+  params.beatLevel = Math.max(bassLevel * 2.6, beatPulse * 1.4);
+  params.energy = bassLevel;
+}
+
+function getReactiveScale() {
+  return 1.0 + params.beatLevel * 1.65;
+}
+
 function drawShapeVisual(size, index){
   const currentShape = shapeTypes[Math.floor(params.shapes)];
   if(currentShape === "none") return;
 
+  const react = getReactiveScale();
+  const flash = params.beatLevel > 1.1 ? (params.beatLevel - 1.1) * 0.9 : 0;
+
   if (params.shapeGradient) {
-    const g = ctx.createLinearGradient(-size/2, -size/2, size/2, size/2);
+    const g = ctx.createLinearGradient(-size, -size, size, size);
     g.addColorStop(0, params.shapeColor1);
     g.addColorStop(1, params.shapeColor2);
     ctx.fillStyle = g;
@@ -163,133 +214,81 @@ function drawShapeVisual(size, index){
     ctx.fillStyle = (index % 2 === 0 ? params.shapeColor1 : params.shapeColor2);
   }
 
+  if (flash > 0.3) ctx.fillStyle = "#ffeeaa";
+
   if(params.strokeEnabled){
     ctx.strokeStyle = params.strokeColor;
-    ctx.lineWidth = params.strokeWidth;
+    ctx.lineWidth = params.strokeWidth * (2 + params.beatLevel * 4);
   }
 
-  shapePath(currentShape, size, index);
+  shapePath(currentShape, size * react, index);
   ctx.fill();
   if(params.strokeEnabled) ctx.stroke();
+
+  if (flash > 0.4) {
+    ctx.save();
+    ctx.globalAlpha = flash * 0.55;
+    ctx.fillStyle = "#ffffcc";
+    shapePath(currentShape, size * react * 0.9, index);
+    ctx.fill();
+    ctx.restore();
+  }
 }
 
 function applyPostFX(){
   let image = ctx.getImageData(0,0,W,H);
   const d = image.data;
+  const intensity = params.beatLevel || 0;
 
   if(params.invertColors){
     for(let i=0;i<d.length;i+=4){ d[i]=255-d[i]; d[i+1]=255-d[i+1]; d[i+2]=255-d[i+2]; }
   }
 
   if(params.postFX.includes("threshold")){
-    const t = 128;
+    const t = 70 + intensity * 70;
     for(let i=0;i<d.length;i+=4){
-      const v=(d[i]+d[i+1]+d[i+2])/3; const c = v>t?255:0;
+      const v=(d[i]+d[i+1]+d[i+2])/3;
+      const c = v > t ? 255 : 40;
       d[i]=d[i+1]=d[i+2]=c;
     }
   }
 
-  if(params.postFX.includes("posterize")){
-    const levels = 5;
-    for(let i=0;i<d.length;i+=4){
-      d[i] = Math.floor(d[i]/255*levels)/levels*255;
-      d[i+1] = Math.floor(d[i+1]/255*levels)/levels*255;
-      d[i+2] = Math.floor(d[i+2]/255*levels)/levels*255;
-    }
-  }
-
-  if(params.postFX.includes("duotone")){
-    const c1 = hexToRGB(params.shapeColor1);
-    const c2 = params.bgGradient ? hexToRGB(params.bgColor2) : hexToRGB(params.bgColor1);
-    for(let i=0;i<d.length;i+=4){
-      const v = (d[i]+d[i+1]+d[i+2])/3/255;
-      d[i]   = c1[0]*(1-v)+c2[0]*v;
-      d[i+1] = c1[1]*(1-v)+c2[1]*v;
-      d[i+2] = c1[2]*(1-v)+c2[2]*v;
-    }
-  }
-
-  if(params.postFX.includes("pixelate")){
-    const scale = 0.2;
-    const temp = document.createElement("canvas"); temp.width=W*scale; temp.height=H*scale;
-    const tctx = temp.getContext("2d"); tctx.putImageData(image,0,0);
-    ctx.imageSmoothingEnabled=false;
-    ctx.drawImage(temp,0,0,temp.width,temp.height,0,0,W,H);
-    return;
-  }
-
-  if(params.postFX.includes("crt")){
-    for(let y=0;y<H;y++){
-      for(let x=0;x<W;x++){
-        const i=(y*W+x)*4;
-        if(y%3===0){ d[i]*=0.9; d[i+1]*=0.9; d[i+2]*=0.9; }
-        if(x%2===0){ d[i+1]*=0.8; d[i+2]*=0.8; }
-      }
-    }
-  }
-
-  if(params.postFX.includes("feedback")){
-    let buf = params.fxBuffers.feedbackCanvas;
-    if(!buf || buf.width !== W || buf.height !== H){
-      buf = document.createElement("canvas");
-      buf.width = W; buf.height = H;
-      params.fxBuffers.feedbackCanvas = buf;
-    }
-    const bctx = buf.getContext("2d");
-    ctx.putImageData(image,0,0);
-    ctx.globalAlpha = 0.85;
-    ctx.drawImage(buf,0,0);
-    ctx.globalAlpha = 1;
-    bctx.drawImage(canvas,0,0);
-    return;
-  }
-
-  ctx.putImageData(image,0,0);
-
-  if(params.postFX.includes("glitch")){
-    const numSlices = 15;
-    const maxOffset = 50;
+  if(params.postFX.includes("glitch") && intensity > 0.7){
     const tempC = document.createElement('canvas');
     tempC.width = W; tempC.height = H;
     const tempCtx = tempC.getContext('2d');
     tempCtx.drawImage(canvas, 0, 0);
-
     ctx.save();
-    for (let i = 0; i < numSlices; i++) {
-      const sliceH = Math.random() * 60 + 10;
+    for (let i = 0; i < 14; i++) {
+      const sliceH = 25 + Math.random() * 50;
       const sliceY = Math.random() * (H - sliceH);
-      const offsetX = (Math.random() - 0.5) * maxOffset;
-      ctx.drawImage(tempC, 0, sliceY, W, sliceH, offsetX, sliceY, W, sliceH);
+      const offset = (Math.random() - 0.5) * 60 * intensity;
+      ctx.drawImage(tempC, 0, sliceY, W, sliceH, offset, sliceY, W, sliceH);
     }
-    ctx.globalCompositeOperation = "screen";
-    ctx.globalAlpha = 0.4;
-    ctx.drawImage(tempC, 4, 0); 
-    ctx.drawImage(tempC, -4, 0); 
     ctx.restore();
   }
-}
 
-function hexToRGB(hex){
-  hex = hex.replace("#","");
-  return [parseInt(hex.substring(0,2),16), parseInt(hex.substring(2,4),16), parseInt(hex.substring(4,6),16)];
+  ctx.putImageData(image,0,0);
 }
 
 function updateAutoGradient() {
   if (!params.autoGradient) return;
-  const hue = (params.angle * 10) % 360;
-  params.bgColor1 = `hsl(${hue}, 70%, 60%)`;
-  params.bgColor2 = `hsl(${(hue + 90) % 360}, 70%, 60%)`;
+  const hue = (params.angle * 12) % 360;
+  params.bgColor1 = `hsl(${hue}, 85%, 55%)`;
+  params.bgColor2 = `hsl(${(hue + 110) % 360}, 90%, 45%)`;
 }
 
 function draw(){
+  updateAudio();
   updateAutoGradient();
 
   if(params.bgSource==="color"){
     if(params.bgGradient || params.autoGradient){
       const g=ctx.createLinearGradient(0,0,W,H);
-      g.addColorStop(0,params.bgColor1); g.addColorStop(1,params.bgColor2);
+      g.addColorStop(0,params.bgColor1); 
+      g.addColorStop(1,params.bgColor2);
       ctx.fillStyle=g;
-    } else ctx.fillStyle=params.bgColor1;
+    } else ctx.fillStyle = params.bgColor1;
     ctx.fillRect(0,0,W,H);
   } else if(videoBg.readyState>=2) {
     ctx.drawImage(videoBg,0,0,W,H);
@@ -298,69 +297,72 @@ function draw(){
   drawGrid();
 
   if(params.placement==="scatter" && (!params.particles || params.particles.length!==params.count)){
-    params.particles=[];
+    params.particles = [];
     for(let i=0;i<params.count; i++){
       params.particles.push({
         x:Math.random()*W,
         y:Math.random()*H,
-        vx:(Math.random()-0.5)*params.speed*2,
-        vy:(Math.random()-0.5)*params.speed*2,
+        vx:(Math.random()-0.5)*params.speed*3,
+        vy:(Math.random()-0.5)*params.speed*3,
         rainOffset: Math.random() * 1000 
       });
     }
   }
 
+  const reactScale = getReactiveScale();
+
   for(let i=0;i<params.count; i++){
     ctx.save();
-    let x=0,y=0;
+    let x=0, y=0;
     
     if(params.placement==="scatter"){
       const p = params.particles[i]; 
       if(params.animation !== "rain"){
-          p.x+=p.vx; p.y+=p.vy;
-          if(p.x>W||p.x<0)p.vx*=-1; if(p.y>H||p.y<0)p.vy*=-1;
-          x=p.x-W/2; y=p.y-H/2;
+        p.x += p.vx * (0.8 + params.beatLevel * 0.6);
+        p.y += p.vy * (0.8 + params.beatLevel * 0.6);
+        if(p.x > W || p.x < 0) p.vx *= -1;
+        if(p.y > H || p.y < 0) p.vy *= -1;
+        x = p.x - W/2; 
+        y = p.y - H/2;
       } else {
-          x=p.x-W/2; y=p.y-H/2;
+        x = p.x - W/2; 
+        y = p.y - H/2;
       }
-    } else if(params.placement==="vertical") y=((i/params.count)-0.5)*H;
-    else if(params.placement==="horizontal") x=((i/params.count)-0.5)*W;
+    } else if(params.placement==="vertical") y = ((i/params.count)-0.5)*H*0.9;
+    else if(params.placement==="horizontal") x = ((i/params.count)-0.5)*W*0.9;
 
-    let sz=params.size;
+    let sz = params.size * reactScale * 0.9;
 
     if(params.animation==="bounce"){
-        y += Math.sin(params.angle * 2 + i * 0.2) * (H * 0.15);
+        y += Math.sin(params.angle * 2.4 + i * 0.8) * (H * 0.24) * reactScale;
     }
     else if(params.animation==="pulse"){
-        const pulseSpeed = 2 + (i % 5) * 0.5; 
-        const scaleFactor = 0.5 + Math.abs(Math.sin(params.angle * pulseSpeed)) * 0.5;
-        sz *= scaleFactor;
+        sz *= 0.7 + Math.pow(Math.sin(params.angle * 6 + i), 3) * (0.8 + params.beatLevel * 1.1);
     }
     else if(params.animation==="wave"){
-        ctx.rotate(Math.sin(params.angle * 3 + i) * 0.3);
-        const flap = Math.sin(params.angle * 4 + i);
-        ctx.scale(1 + flap*0.1, 1 - flap*0.1);
+        ctx.rotate(Math.sin(params.angle * 4.5 + i) * 0.55 * reactScale);
+        ctx.scale(1 + params.beatLevel * 0.4, 1 - params.beatLevel * 0.25);
     }
     else if(params.animation==="rain"){
         let rOffset = params.particles[i] ? params.particles[i].rainOffset : i * 50;
-        let fallDistance = (params.angle * params.speed * 20 + rOffset) % (H + params.size * 2);
-        y = -H/2 - params.size + fallDistance; 
+        let fall = (params.angle * params.speed * 26 + rOffset) % (H * 1.8);
+        y = -H*0.7 + fall * (0.7 + params.beatLevel * 1.1);
     }
 
-    ctx.translate(W/2+x, H/2+y);
-    ctx.rotate(Math.sin(params.angle)*0.1);
+    ctx.translate(W/2 + x, H/2 + y);
+    ctx.rotate(Math.sin(params.angle * 2) * 0.12 * reactScale);
 
     drawShapeVisual(sz, i); 
-
     ctx.restore();
   }
 
-  params.angle += params.speed * 0.02;
+  params.angle += params.speed * 0.022 * (1 + params.beatLevel * 1.4);
 
   if(params.grainEnabled){
     let img = ctx.getImageData(0,0,W,H), d = img.data;
+    const grainStrength = 25 + params.beatLevel * 65;
     for(let i = 0; i < d.length; i += 4){
-      let n = (Math.random()-0.5)*60;
+      let n = (Math.random()-0.5) * grainStrength;
       d[i] += n; d[i+1] += n; d[i+2] += n;
     }
     ctx.putImageData(img,0,0);
@@ -381,9 +383,20 @@ draw();
 window.addEventListener("message", async e => {
   const d = e.data;
   if(!d) return;
-  if(d.type==="controller_ping") e.source.postMessage({type:"visual_handshake"},"*");
-
   Object.assign(params, d);
+  
+  if("micSyncEnabled" in d && d.micSyncEnabled && !analyser){
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioCtx.createMediaStreamSource(stream);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.65;
+      source.connect(analyser);
+    } catch(err){ console.warn("Visual mic sync failed", err); }
+  }
+  
   if("bgSource" in d) await initCamera(d.bgSource);
 });
 </script>
