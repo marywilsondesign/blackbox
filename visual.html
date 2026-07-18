@@ -8,11 +8,14 @@
 html,body{margin:0;padding:0;width:100%;height:100%;background:black;overflow:hidden;}
 canvas,video{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;}
 canvas{z-index:1;}
+#statusOverlay{position:absolute;top:12px;left:12px;right:12px;z-index:2;padding:10px 14px;border-radius:10px;background:rgba(0,0,0,0.55);color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.4;pointer-events:none;display:none;box-shadow:0 0 0 1px rgba(255,255,255,0.1);} 
+#statusOverlay.warn{background:rgba(160,0,0,0.85);}
 </style>
 </head>
 <body>
 <video id="videoBg" autoplay muted playsinline style="display:none;"></video>
 <canvas id="visual"></canvas>
+<div id="statusOverlay"></div>
 
 <script>
 const canvas = document.getElementById("visual");
@@ -31,11 +34,12 @@ const params = {
   shapes: 0,
   size: 120,
   count: 12,
-  shapeColor1: "#00ffff",
-  shapeColor2: "#ff00ff",
-  shapeGradient: true,
-  bgColor1: "#111111",
-  bgColor2: "#440044",
+  shapeColor1: "#000000",
+  shapeColor2: "#000000",
+  shapeGradient: false,
+  shapeAutoGradient: false,
+  bgColor1: "#000000",
+  bgColor2: "#000000",
   bgGradient: false,
   autoGradient: false,
   invertColors: false,
@@ -71,20 +75,49 @@ function detRandom(seed) {
     return x - Math.floor(x);
 }
 
+const statusOverlay = document.getElementById("statusOverlay");
+function setStatusMessage(message, warn = false){
+  if(!message){
+    statusOverlay.style.display = "none";
+    statusOverlay.textContent = "";
+    statusOverlay.classList.remove("warn");
+    return;
+  }
+  statusOverlay.textContent = message;
+  statusOverlay.style.display = "block";
+  statusOverlay.classList.toggle("warn", warn);
+}
+
 async function initCamera(type){
   if(cameraStream){ cameraStream.getTracks().forEach(t=>t.stop()); cameraStream=null; videoBg.style.display="none"; }
-  if(type==="color"){ videoBg.style.display="none"; return; }
+  if(type==="color"){ videoBg.style.display="none"; setStatusMessage(""); return; }
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    setStatusMessage("Camera not supported in this browser. Reverting to color background.", true);
+    params.bgSource = "color";
+    return;
+  }
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
     let target = devices.find(d=>d.kind==="videoinput");
     if(type==="macbookCam") target = devices.find(d=>/FaceTime/i.test(d.label)) || target;
     if(type==="usbCam") target = devices.find(d=>/USB/i.test(d.label)) || target;
+    if(!target){
+      setStatusMessage("No camera found. Reverting to color background.", true);
+      params.bgSource = "color";
+      return;
+    }
     const constraints = {video:{deviceId: target.deviceId}};
     cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
     videoBg.srcObject = cameraStream;
     await videoBg.play();
     videoBg.style.display="block";
-  } catch(e){ console.warn("Camera error", e); }
+    setStatusMessage("Camera source enabled. Allow access if prompted.", false);
+  } catch(e){
+    console.warn("Camera error", e);
+    setStatusMessage("Camera access denied or unavailable. Reverting to color background.", true);
+    params.bgSource = "color";
+    videoBg.style.display="none";
+  }
 }
 
 function shapePath(type, size, index){
@@ -165,23 +198,26 @@ function updateAudio() {
 
   analyser.getByteFrequencyData(audioData);
 
-  // HEAVY BASS focus (0-80Hz range)
   let bass = 0;
-  for (let i = 2; i < 22; i++) bass += audioData[i];
-  bass = bass / 20;
+  for (let i = 1; i <= 6; i++) bass += audioData[i];
+  bass /= 6;
 
-  // Very light mid check (to avoid complete silence)
   let mid = 0;
-  for (let i = 40; i < 90; i++) mid += audioData[i];
-  mid = mid / 50;
+  for (let i = 8; i <= 20; i++) mid += audioData[i];
+  mid /= 13;
 
-  const normalizedBass = bass / 255;
-  const normalizedMid = mid / 255;
+  const sensitivity = Math.max(0.2, Math.min(1, params.micSensitivity || 0.6));
+  const currentBass = bass / 255;
+  const currentMid = mid / 255;
 
-  bassLevel = bassLevel * 0.55 + normalizedBass * 0.45;
+  bassLevel = bassLevel * 0.72 + currentBass * 0.28;
 
+  const beatThreshold = 0.52 - (sensitivity - 0.6) * 0.14;
+  const transientFactor = 1.6 - (sensitivity - 0.6) * 0.4;
   const now = Date.now();
-  const strongBeat = normalizedBass > 0.68 && normalizedMid < 0.55 && (now - lastBeatTime > 160);
+  const isBassHit = currentBass > beatThreshold && currentBass > currentMid * 1.15;
+  const isTransient = currentBass > bassLevel * transientFactor;
+  const strongBeat = isBassHit && isTransient && currentMid < 0.58 && (now - lastBeatTime > 180);
 
   if (strongBeat) {
     beatPulse = 1.8;
@@ -189,8 +225,8 @@ function updateAudio() {
     if (typeof window.showBeat === "function") window.showBeat();
   }
 
-  beatPulse *= 0.68;
-  params.beatLevel = Math.max(bassLevel * 2.6, beatPulse * 1.4);
+  beatPulse *= 0.66;
+  params.beatLevel = Math.max(bassLevel * 2.4, beatPulse * 1.5);
   params.energy = bassLevel;
 }
 
@@ -205,13 +241,21 @@ function drawShapeVisual(size, index){
   const react = getReactiveScale();
   const flash = params.beatLevel > 1.1 ? (params.beatLevel - 1.1) * 0.9 : 0;
 
+  let shapeColor1 = params.shapeColor1;
+  let shapeColor2 = params.shapeColor2;
+  if (params.shapeAutoGradient) {
+    const hue = (params.angle * 12 + index * 12) % 360;
+    shapeColor1 = `hsl(${hue}, 92%, 60%)`;
+    shapeColor2 = `hsl(${(hue + 85) % 360}, 90%, 55%)`;
+  }
+
   if (params.shapeGradient) {
     const g = ctx.createLinearGradient(-size, -size, size, size);
-    g.addColorStop(0, params.shapeColor1);
-    g.addColorStop(1, params.shapeColor2);
+    g.addColorStop(0, shapeColor1);
+    g.addColorStop(1, shapeColor2);
     ctx.fillStyle = g;
   } else {
-    ctx.fillStyle = (index % 2 === 0 ? params.shapeColor1 : params.shapeColor2);
+    ctx.fillStyle = (index % 2 === 0 ? shapeColor1 : shapeColor2);
   }
 
   if (flash > 0.3) ctx.fillStyle = "#ffeeaa";
@@ -245,30 +289,156 @@ function applyPostFX(){
   }
 
   if(params.postFX.includes("threshold")){
-    const t = 70 + intensity * 70;
+    const avg = d.reduce((sum, val, idx) => idx % 4 === 0 ? sum + (d[idx] + d[idx+1] + d[idx+2]) / 3 : sum, 0) / (d.length / 4);
+    const t = Math.min(180, Math.max(96, 120 + intensity * 18 - (avg - 128) * 0.15));
     for(let i=0;i<d.length;i+=4){
-      const v=(d[i]+d[i+1]+d[i+2])/3;
-      const c = v > t ? 255 : 40;
-      d[i]=d[i+1]=d[i+2]=c;
+      const v = (d[i] + d[i+1] + d[i+2]) / 3;
+      const c = v > t ? 255 : (v > t * 0.7 ? 128 : 24);
+      d[i] = d[i+1] = d[i+2] = c;
     }
   }
 
-  if(params.postFX.includes("glitch") && intensity > 0.7){
-    const tempC = document.createElement('canvas');
-    tempC.width = W; tempC.height = H;
-    const tempCtx = tempC.getContext('2d');
-    tempCtx.drawImage(canvas, 0, 0);
-    ctx.save();
-    for (let i = 0; i < 14; i++) {
-      const sliceH = 25 + Math.random() * 50;
-      const sliceY = Math.random() * (H - sliceH);
-      const offset = (Math.random() - 0.5) * 60 * intensity;
-      ctx.drawImage(tempC, 0, sliceY, W, sliceH, offset, sliceY, W, sliceH);
+  if(params.postFX.includes("posterize")){
+    const levels = 5;
+    for(let i=0;i<d.length;i+=4){
+      d[i]   = Math.floor(d[i]   / 255 * levels) * Math.floor(255 / (levels - 1));
+      d[i+1] = Math.floor(d[i+1] / 255 * levels) * Math.floor(255 / (levels - 1));
+      d[i+2] = Math.floor(d[i+2] / 255 * levels) * Math.floor(255 / (levels - 1));
     }
-    ctx.restore();
+  }
+
+  if(params.postFX.includes("duotone")){
+    const c1 = [40, 20, 120];
+    const c2 = [255, 200, 70];
+    for(let i=0;i<d.length;i+=4){
+      const lum = (d[i] * 0.299 + d[i+1] * 0.587 + d[i+2] * 0.114) / 255;
+      d[i]   = c1[0] + (c2[0] - c1[0]) * lum;
+      d[i+1] = c1[1] + (c2[1] - c1[1]) * lum;
+      d[i+2] = c1[2] + (c2[2] - c1[2]) * lum;
+    }
+  }
+
+  if(params.postFX.includes("pixelate")){
+    const grid = Math.max(6, Math.floor(20 - intensity * 16));
+    for(let y=0;y<H;y+=grid){
+      for(let x=0;x<W;x+=grid){
+        const idx = ((y * W) + x) * 4;
+        const r = d[idx], g = d[idx+1], b = d[idx+2], a = d[idx+3];
+        for(let yy=y; yy<y+grid && yy<H; yy++){
+          for(let xx=x; xx<x+grid && xx<W; xx++){
+            const i2 = ((yy * W) + xx) * 4;
+            d[i2]=r; d[i2+1]=g; d[i2+2]=b; d[i2+3]=a;
+          }
+        }
+      }
+    }
+  }
+
+  if(params.postFX.includes("crt")){
+    const scan = 3 + Math.floor(intensity * 3);
+    for(let y=0;y<H;y+=scan){
+      const lineBias = 0.86 + Math.sin(y * 0.065 + params.angle * 0.18) * 0.08;
+      for(let x=0;x<W;x++){
+        const idx = ((y * W) + x) * 4;
+        d[idx]   = Math.min(255, d[idx] * lineBias);
+        d[idx+1] = Math.min(255, d[idx+1] * lineBias);
+        d[idx+2] = Math.min(255, d[idx+2] * lineBias);
+      }
+    }
+    const wobble = Math.sin(params.angle * 0.18) * 0.24 * intensity;
+    if (wobble > 0.03) {
+      for(let y=0;y<H;y+=5){
+        const shift = Math.floor((Math.sin(y * 0.045 + params.angle * 0.22) * 0.5 + 0.5) * wobble * 2);
+        for(let x=0;x<W-shift;x++){
+          const idx = ((y * W) + x) * 4;
+          const idx2 = ((y * W) + x + shift) * 4;
+          d[idx2] = d[idx];
+          d[idx2+1] = d[idx+1];
+          d[idx2+2] = d[idx+2];
+        }
+      }
+    }
+  }
+
+  if(params.postFX.includes("feedback")){
+    if(!params.fxBuffers.feedback){
+      const buf = document.createElement('canvas');
+      buf.width = W;
+      buf.height = H;
+      params.fxBuffers.feedback = buf;
+      const fctx = buf.getContext('2d');
+      fctx.clearRect(0, 0, W, H);
+      fctx.drawImage(canvas, 0, 0, W, H);
+    }
   }
 
   ctx.putImageData(image,0,0);
+
+  if(params.postFX.includes("feedback")){
+    const fb = params.fxBuffers.feedback;
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 0.42 + intensity * 0.24;
+    ctx.drawImage(fb, -2, 0, W + 4, H);
+    ctx.drawImage(fb, 2, 0, W + 4, H);
+    ctx.restore();
+
+    const fctx = fb.getContext('2d');
+    fctx.save();
+    fctx.globalCompositeOperation = 'source-over';
+    fctx.fillStyle = `rgba(0,0,0,${0.02 + intensity * 0.018})`;
+    fctx.fillRect(0, 0, W, H);
+    fctx.globalAlpha = 0.48 + intensity * 0.24;
+    fctx.drawImage(canvas, 0, 0, W, H);
+    fctx.restore();
+  }
+
+  if(params.postFX.includes("glitch")){
+    const tempC = document.createElement('canvas');
+    tempC.width = W; tempC.height = H;
+    const tempCtx = tempC.getContext('2d');
+    tempCtx.putImageData(image, 0, 0);
+
+    const sliceCount = 10 + Math.round(intensity * 14);
+    const baseShift = 18 + intensity * 72;
+    const layerAlpha = 0.22 + intensity * 0.34;
+
+    ctx.save();
+    for (let i = 0; i < sliceCount; i++) {
+      const sliceH = 8 + Math.random() * 120;
+      const sliceY = Math.floor(Math.random() * Math.max(1, H - sliceH));
+      const xShift = Math.floor((Math.random() - 0.5) * baseShift * (0.55 + Math.random() * 0.7));
+      ctx.globalAlpha = 0.65 + Math.random() * 0.25;
+      ctx.drawImage(tempC, 0, sliceY, W, sliceH, xShift, sliceY, W, sliceH);
+
+      if (Math.random() > 0.35) {
+        ctx.globalCompositeOperation = 'screen';
+        ctx.globalAlpha = layerAlpha * 0.95;
+        ctx.drawImage(tempC, 0, sliceY, W, sliceH, xShift * -0.45, sliceY, W, sliceH);
+        ctx.globalCompositeOperation = 'source-over';
+      }
+    }
+
+    const offset = Math.floor(6 + intensity * 24);
+    ctx.globalAlpha = 0.18 + intensity * 0.30;
+    ctx.drawImage(tempC, offset, 0, W - offset, H, 0, 0, W - offset, H);
+    ctx.drawImage(tempC, 0, 0, W - offset, H, offset, 0, W - offset, H);
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.14 + intensity * 0.22;
+    ctx.drawImage(tempC, 0, 0, W, H, -3 - intensity * 4, 0, W, H);
+    ctx.globalAlpha = 0.14 + intensity * 0.22;
+    ctx.drawImage(tempC, 0, 0, W, H, 3 + intensity * 4, 0, W, H);
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'difference';
+    ctx.globalAlpha = 0.08 + intensity * 0.16;
+    ctx.drawImage(tempC, 0, 0, W, H);
+    ctx.restore();
+  }
 }
 
 function updateAutoGradient() {
@@ -296,14 +466,14 @@ function draw(){
 
   drawGrid();
 
-  if(params.placement==="scatter" && (!params.particles || params.particles.length!==params.count)){
+  if((params.placement==="scatter" || params.animation==="rain") && (!params.particles || params.particles.length!==params.count)){
     params.particles = [];
     for(let i=0;i<params.count; i++){
       params.particles.push({
         x:Math.random()*W,
-        y:Math.random()*H,
-        vx:(Math.random()-0.5)*params.speed*3,
-        vy:(Math.random()-0.5)*params.speed*3,
+        y:Math.random()*(H*1.2) - H*0.2,
+        vx:(Math.random()-0.5)*params.speed*0.06,
+        vy:(Math.random()-0.5)*params.speed*0.06,
         rainOffset: Math.random() * 1000 
       });
     }
@@ -314,39 +484,52 @@ function draw(){
   for(let i=0;i<params.count; i++){
     ctx.save();
     let x=0, y=0;
-    
+    let baseX = 0, baseY = 0;
+    const p = params.particles[i];
+
     if(params.placement==="scatter"){
-      const p = params.particles[i]; 
-      if(params.animation !== "rain"){
-        p.x += p.vx * (0.8 + params.beatLevel * 0.6);
-        p.y += p.vy * (0.8 + params.beatLevel * 0.6);
-        if(p.x > W || p.x < 0) p.vx *= -1;
-        if(p.y > H || p.y < 0) p.vy *= -1;
-        x = p.x - W/2; 
-        y = p.y - H/2;
-      } else {
-        x = p.x - W/2; 
-        y = p.y - H/2;
+      if(p){
+        if(params.animation !== "rain"){
+          p.x += p.vx * (0.56 + params.beatLevel * 0.28);
+          p.y += p.vy * (0.56 + params.beatLevel * 0.28);
+          if(p.x > W || p.x < 0) p.vx *= -1;
+          if(p.y > H || p.y < 0) p.vy *= -1;
+          baseY = p.y - H/2;
+        } else {
+          baseY = 0;
+        }
+        baseX = p.x - W/2;
       }
-    } else if(params.placement==="vertical") y = ((i/params.count)-0.5)*H*0.9;
-    else if(params.placement==="horizontal") x = ((i/params.count)-0.5)*W*0.9;
+    } else if(params.placement==="vertical"){
+      baseX = 0;
+      baseY = ((i / Math.max(1, params.count - 1)) - 0.5) * H * 0.92;
+    } else if(params.placement==="horizontal"){
+      baseX = ((i / Math.max(1, params.count - 1)) - 0.5) * W * 0.92;
+      baseY = 0;
+    }
 
     let sz = params.size * reactScale * 0.9;
 
     if(params.animation==="bounce"){
-        y += Math.sin(params.angle * 2.4 + i * 0.8) * (H * 0.24) * reactScale;
+        x = baseX;
+        y = baseY + Math.sin(params.angle * 1.8 + i * 0.65) * (H * 0.18) * reactScale;
     }
     else if(params.animation==="pulse"){
-        sz *= 0.7 + Math.pow(Math.sin(params.angle * 6 + i), 3) * (0.8 + params.beatLevel * 1.1);
+        x = baseX;
+        y = baseY;
+        sz *= 0.85 + Math.pow(Math.sin(params.angle * 4.8 + i), 3) * (0.5 + params.beatLevel * 0.7);
     }
     else if(params.animation==="wave"){
-        ctx.rotate(Math.sin(params.angle * 4.5 + i) * 0.55 * reactScale);
-        ctx.scale(1 + params.beatLevel * 0.4, 1 - params.beatLevel * 0.25);
+        x = baseX;
+        y = baseY;
+        ctx.rotate(Math.sin(params.angle * 3.6 + i) * 0.38 * reactScale);
+        ctx.scale(1 + params.beatLevel * 0.28, 1 - params.beatLevel * 0.18);
     }
     else if(params.animation==="rain"){
-        let rOffset = params.particles[i] ? params.particles[i].rainOffset : i * 50;
-        let fall = (params.angle * params.speed * 26 + rOffset) % (H * 1.8);
-        y = -H*0.7 + fall * (0.7 + params.beatLevel * 1.1);
+        const fallOffset = (params.angle * params.speed * 2.1 + (p ? p.rainOffset : i * 37)) % (H * 2.2);
+        x = baseX;
+        y = baseY + fallOffset - H * 0.95;
+        y += Math.sin(params.angle * 0.004 + i * 0.8) * H * 0.04;
     }
 
     ctx.translate(W/2 + x, H/2 + y);
@@ -356,7 +539,7 @@ function draw(){
     ctx.restore();
   }
 
-  params.angle += params.speed * 0.022 * (1 + params.beatLevel * 1.4);
+  params.angle += params.speed * 0.0034 * (1 + params.beatLevel * 0.75);
 
   if(params.grainEnabled){
     let img = ctx.getImageData(0,0,W,H), d = img.data;
@@ -382,22 +565,31 @@ draw();
 
 window.addEventListener("message", async e => {
   const d = e.data;
-  if(!d) return;
-  Object.assign(params, d);
-  
-  if("micSyncEnabled" in d && d.micSyncEnabled && !analyser){
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({audio:true});
-      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const source = audioCtx.createMediaStreamSource(stream);
-      analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 512;
-      analyser.smoothingTimeConstant = 0.65;
-      source.connect(analyser);
-    } catch(err){ console.warn("Visual mic sync failed", err); }
+  if(!d || typeof d !== 'object') return;
+
+  if("bgSource" in d){
+    params.bgSource = d.bgSource;
+    await initCamera(d.bgSource);
   }
-  
-  if("bgSource" in d) await initCamera(d.bgSource);
+
+  Object.assign(params, d);
+
+  if("micSyncEnabled" in d){
+    params.micSyncEnabled = d.micSyncEnabled;
+    if(d.micSyncEnabled && !analyser){
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioCtx.createMediaStreamSource(stream);
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 512;
+        analyser.smoothingTimeConstant = 0.65;
+        source.connect(analyser);
+      } catch(err){ console.warn("Visual mic sync failed", err); }
+    } else if (!d.micSyncEnabled && analyser) {
+      analyser = null;
+    }
+  }
 });
 </script>
 </body>

@@ -132,24 +132,72 @@ input[type="checkbox"]:checked::after {
   transform: rotate(45deg);
 }
 
-input[type="range"] { 
-  height: 20px; background: transparent;
+input[type="range"] {
+  width: 100%;
+  height: 18px;
+  background: transparent;
+  margin: 6px 0;
 }
 input[type="range"]::-webkit-slider-runnable-track {
-  height: 6px;
-  background: var(--color-btnface);
-  border-top: 1px solid var(--color-highlight);
-  border-bottom: 1px solid var(--color-shadow);
-}
-input[type="range"]::-webkit-slider-thumb { 
-  -webkit-appearance: none; 
-  width: 13px; height: 15px; 
+  height: 14px;
   background: var(--color-btnface);
   border-top: 1px solid var(--color-highlight);
   border-left: 1px solid var(--color-highlight);
   border-bottom: 1px solid var(--color-shadow);
   border-right: 1px solid var(--color-shadow);
-  margin-top: -5px; 
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 18px;
+  background: var(--color-window);
+  border-top: 1px solid var(--color-highlight);
+  border-left: 1px solid var(--color-highlight);
+  border-bottom: 1px solid var(--color-shadow);
+  border-right: 1px solid var(--color-shadow);
+  margin-top: -2px;
+  cursor: pointer;
+}
+input[type="range"]::-moz-range-track {
+  height: 14px;
+  background: var(--color-btnface);
+  border-top: 1px solid var(--color-highlight);
+  border-left: 1px solid var(--color-highlight);
+  border-bottom: 1px solid var(--color-shadow);
+  border-right: 1px solid var(--color-shadow);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 18px;
+  background: var(--color-window);
+  border-top: 1px solid var(--color-highlight);
+  border-left: 1px solid var(--color-highlight);
+  border-bottom: 1px solid var(--color-shadow);
+  border-right: 1px solid var(--color-shadow);
+  cursor: pointer;
+}
+input[type="range"]::-ms-track {
+  height: 14px;
+  background: transparent;
+  border-color: transparent;
+  color: transparent;
+}
+input[type="range"]::-ms-fill-lower,
+input[type="range"]::-ms-fill-upper {
+  background: var(--color-btnface);
+  border-top: 1px solid var(--color-highlight);
+  border-left: 1px solid var(--color-highlight);
+  border-bottom: 1px solid var(--color-shadow);
+  border-right: 1px solid var(--color-shadow);
+}
+input[type="range"]::-ms-thumb {
+  width: 14px;
+  height: 18px;
+  background: var(--color-window);
+  border-top: 1px solid var(--color-highlight);
+  border-left: 1px solid var(--color-highlight);
+  border-bottom: 1px solid var(--color-shadow);
+  border-right: 1px solid var(--color-shadow);
   cursor: pointer;
 }
 
@@ -235,22 +283,30 @@ select[multiple] { height: 100px; }
 
 <label id="micSyncLabel">
   <input type="checkbox" id="micSyncEnabled"> 
-  MIC SYNCOPATION MODE — MUSIC REACTIVE
+  MIC MODE (MUSIC REACTIVE)
 </label>
+<label>mic sensitivity: <input type="range" id="micSensitivity" min="20" max="100" value="60"></label>
 <div id="micStatus"></div>
 <div id="beatIndicator">♪ BEAT DETECTED ♪</div>
 
 <div id="bgColorControls">
   <label>BG Color A:
-    <input type="color" id="bgColor1" value="#111111">
+    <input type="color" id="bgColor1" value="#000000">
     <span id="bgColor1Preview" class="colorPreview"></span>
   </label>
   <label>BG Color B:
-    <input type="color" id="bgColor2" value="#440044">
+    <input type="color" id="bgColor2" value="#000000">
     <span id="bgColor2Preview" class="colorPreview"></span>
   </label>
   <label><input type="checkbox" id="bgGradient"> Gradient Mode</label>
   <label><input type="checkbox" id="autoGradient"> Auto Cycle</label>
+  <label>Background Source:
+    <select id="bgSource">
+      <option value="color">Color</option>
+      <option value="macbookCam">MacBook Cam</option>
+      <option value="usbCam">USB Cam</option>
+    </select>
+  </label>
 </div>
 
 <label><input type="checkbox" id="gridEnabled"> Show Grid</label>
@@ -276,16 +332,17 @@ select[multiple] { height: 100px; }
 <fieldset class="groupbox">
 <legend>STYLE</legend>
 <label>Fill Color A:
-  <input type="color" id="shapeColor1" value="#00ffff">
+  <input type="color" id="shapeColor1" value="#000000">
   <span id="shapeColor1Preview" class="colorPreview"></span>
 </label>
 <label>Fill Color B:
-  <input type="color" id="shapeColor2" value="#ff00ff">
+  <input type="color" id="shapeColor2" value="#000000">
   <span id="shapeColor2Preview" class="colorPreview"></span>
 </label>
-<label><input type="checkbox" id="shapeGradient" checked> Shape Gradient</label>
+<label><input type="checkbox" id="shapeGradient"> Shape Gradient</label>
+<label><input type="checkbox" id="shapeAutoGradient"> Auto Cycle</label>
 
-<label><input type="checkbox" id="strokeEnabled" checked> Stroke Enabled</label>
+<label><input type="checkbox" id="strokeEnabled"> Stroke Enabled</label>
 <label>Stroke Color:
   <input type="color" id="strokeColor" value="#ffffff">
   <span id="strokeColorPreview" class="colorPreview"></span>
@@ -311,7 +368,7 @@ select[multiple] { height: 100px; }
     <option value="rain">[RAIN]</option>
   </select>
 </label>
-<label>Speed: <input type="range" id="speed" min="1" max="20" value="5"></label>
+<label>Speed: <input type="range" id="speed" min="0.1" max="40" step="0.1" value="5"></label>
 <label><input type="checkbox" id="invertColors"> Invert Colors</label>
 </fieldset>
 
@@ -381,40 +438,121 @@ micToggle.addEventListener("change", async () => {
   }
 });
 
-// Open Visual
-document.getElementById("openVisual").addEventListener("click", () => {
-  if(!visualWindow || visualWindow.closed){
-    visualWindow = window.open("visual.html", "visual", "width=1200,height=800");
-  }
-});
+function getCurrentState(){
+  return {
+    shapes: parseFloat(document.getElementById("shapes").value),
+    size: parseFloat(document.getElementById("size").value),
+    count: parseFloat(document.getElementById("count").value),
+    shapeColor1: document.getElementById("shapeColor1").value,
+    shapeColor2: document.getElementById("shapeColor2").value,
+    shapeGradient: document.getElementById("shapeGradient").checked,
+    shapeAutoGradient: document.getElementById("shapeAutoGradient").checked,
+    bgColor1: document.getElementById("bgColor1").value,
+    bgColor2: document.getElementById("bgColor2").value,
+    bgGradient: document.getElementById("bgGradient").checked,
+    autoGradient: document.getElementById("autoGradient").checked,
+    bgSource: document.getElementById("bgSource").value,
+    invertColors: document.getElementById("invertColors").checked,
+    animation: document.getElementById("animation").value,
+    placement: document.getElementById("placement").value,
+    speed: parseFloat(document.getElementById("speed").value),
+    gridEnabled: document.getElementById("gridEnabled").checked,
+    gridColor: document.getElementById("gridColor").value,
+    gridSpacing: parseFloat(document.getElementById("gridSpacing").value),
+    grainEnabled: document.getElementById("grainEnabled").checked,
+    strokeColor: document.getElementById("strokeColor").value,
+    strokeWidth: parseFloat(document.getElementById("strokeWidth").value),
+    strokeEnabled: document.getElementById("strokeEnabled").checked,
+    postFX: Array.from(document.getElementById("postFX").selectedOptions).map(opt => opt.value),
+    micSyncEnabled: micToggle.checked,
+    micSensitivity: parseFloat(document.getElementById("micSensitivity").value) / 100
+  };
+}
 
-// Randomizer (unchanged)
+function syncVisualState(){
+  if (visualWindow && !visualWindow.closed) {
+    visualWindow.postMessage(getCurrentState(), "*");
+  }
+}
+
+function openVisualWindow(){
+  if(visualWindow && !visualWindow.closed){
+    visualWindow.focus();
+    syncVisualState();
+    return;
+  }
+
+  const screenLeft = window.screen.availLeft ?? window.screenX ?? window.screenLeft ?? 0;
+  const screenTop = window.screen.availTop ?? window.screenY ?? window.screenTop ?? 0;
+  const screenWidth = window.screen.availWidth ?? window.innerWidth;
+  const screenHeight = window.screen.availHeight ?? window.innerHeight;
+
+  const ctrlLeft = window.screenX ?? window.screenLeft ?? screenLeft;
+  const ctrlTop = window.screenY ?? window.screenTop ?? screenTop;
+  const ctrlWidth = window.outerWidth || Math.min(800, screenWidth);
+  const ctrlHeight = window.outerHeight || Math.min(900, screenHeight);
+
+  const rightSpace = screenLeft + screenWidth - (ctrlLeft + ctrlWidth);
+  const leftSpace = ctrlLeft - screenLeft;
+
+  let left = ctrlLeft + ctrlWidth;
+  if (rightSpace < ctrlWidth && leftSpace >= ctrlWidth) {
+    left = Math.max(screenLeft, ctrlLeft - ctrlWidth);
+  } else if (rightSpace < ctrlWidth) {
+    left = screenLeft + 20;
+  }
+
+  const width = ctrlWidth;
+  const height = ctrlHeight;
+  const top = ctrlTop;
+  const features = `toolbar=no,location=no,status=no,menubar=no,scrollbars=no,resizable=yes,width=${width},height=${height},left=${left},top=${top}`;
+
+  visualWindow = window.open("visual.html", "visual", features);
+  if (visualWindow) {
+    visualWindow.focus();
+    setTimeout(syncVisualState, 250);
+  }
+}
+
+document.getElementById("openVisual").addEventListener("click", openVisualWindow);
+
 document.getElementById("randomize").addEventListener("click", () => {
   const r = () => Math.random();
   const randInt = (min, max) => Math.floor(min + r() * (max - min + 1));
+  const brightColor = () => {
+    const h = randInt(0, 360);
+    const s = randInt(70, 100);
+    const l = randInt(45, 70);
+    return `hsl(${h}, ${s}%, ${l}%)`;
+  };
 
   document.getElementById("shapes").value = randInt(1, 5);
-  document.getElementById("size").value = randInt(40, 280);
-  document.getElementById("count").value = randInt(3, 48);
-  document.getElementById("speed").value = randInt(1, 13);
+  document.getElementById("size").value = randInt(50, 260);
+  document.getElementById("count").value = randInt(10, 48);
+  document.getElementById("speed").value = (randInt(8, 120) / 10).toFixed(1);
 
-  document.getElementById("shapeColor1").value = '#' + Math.floor(r()*16777215).toString(16).padStart(6,'0');
-  document.getElementById("shapeColor2").value = '#' + Math.floor(r()*16777215).toString(16).padStart(6,'0');
-  document.getElementById("bgColor1").value   = '#' + Math.floor(r()*16777215).toString(16).padStart(6,'0');
-  document.getElementById("bgColor2").value   = '#' + Math.floor(r()*16777215).toString(16).padStart(6,'0');
-  document.getElementById("strokeColor").value = '#' + Math.floor(r()*16777215).toString(16).padStart(6,'0');
-  document.getElementById("gridColor").value   = '#' + Math.floor(r()*16777215).toString(16).padStart(6,'0');
+  const baseHue = randInt(0, 360);
+  const altHue = (baseHue + 130) % 360;
+  document.getElementById("shapeColor1").value = `hsl(${baseHue}, 96%, 58%)`;
+  document.getElementById("shapeColor2").value = `hsl(${(baseHue + 45) % 360}, 92%, 62%)`;
+  document.getElementById("bgColor1").value   = `hsl(${altHue}, 72%, 22%)`;
+  document.getElementById("bgColor2").value   = `hsl(${(altHue + 40) % 360}, 60%, 35%)`;
+  document.getElementById("strokeColor").value = `hsl(${(baseHue + 180) % 360}, 90%, 72%)`;
+  document.getElementById("gridColor").value   = `hsl(${(altHue + 30) % 360}, 50%, 40%)`;
+  document.getElementById("bgSource").value = "color";
 
-  document.getElementById("shapeGradient").checked = r() > 0.3;
-  document.getElementById("bgGradient").checked    = r() > 0.45;
-  document.getElementById("autoGradient").checked  = r() > 0.8;
-  document.getElementById("strokeEnabled").checked = r() > 0.25;
-  document.getElementById("grainEnabled").checked  = r() > 0.25;
-  document.getElementById("invertColors").checked  = r() > 0.7;
-  document.getElementById("gridEnabled").checked   = r() > 0.65;
+  document.getElementById("shapeGradient").checked = r() > 0.25;
+  document.getElementById("shapeAutoGradient").checked = r() > 0.45;
+  document.getElementById("bgGradient").checked    = true;
+  document.getElementById("autoGradient").checked  = r() > 0.6;
+  document.getElementById("strokeEnabled").checked = true;
+  document.getElementById("grainEnabled").checked  = true;
+  document.getElementById("invertColors").checked  = false;
+  document.getElementById("gridEnabled").checked   = r() > 0.45;
 
   document.getElementById("gridSpacing").value = randInt(25, 120);
-  document.getElementById("strokeWidth").value = randInt(1, 9);
+  document.getElementById("strokeWidth").value = randInt(2, 7);
+  document.getElementById("micSensitivity").value = randInt(20, 100);
 
   const placements = ["normal","scatter","vertical","horizontal"];
   const animations = ["bounce","pulse","wave","rain"];
@@ -447,7 +585,7 @@ shapesSlider.addEventListener("input", e => {
   shapeLabel.textContent = `[${shapeNames[val]}]`;
 });
 
-const inputs = ["shapes","size","count","shapeColor1","shapeColor2","shapeGradient","bgColor1","bgColor2","bgGradient","autoGradient","invertColors","animation","placement","speed","gridEnabled","gridColor","gridSpacing","grainEnabled","strokeColor","strokeWidth","strokeEnabled","postFX"];
+const inputs = ["shapes","size","count","shapeColor1","shapeColor2","shapeGradient","shapeAutoGradient","bgColor1","bgColor2","bgGradient","autoGradient","bgSource","micSensitivity","invertColors","animation","placement","speed","gridEnabled","gridColor","gridSpacing","grainEnabled","strokeColor","strokeWidth","strokeEnabled","postFX"];
 
 inputs.forEach(id => {
   const el = document.getElementById(id);
@@ -457,6 +595,7 @@ inputs.forEach(id => {
     if (el.type === "checkbox") value = el.checked;
     else if (el.type === "range" || el.type === "number") value = parseFloat(el.value);
     else if (id === "postFX") value = Array.from(el.selectedOptions).map(opt => opt.value);
+    else if (id === "micSensitivity") value = parseFloat(el.value) / 100;
     else value = el.value;
 
     if (visualWindow && !visualWindow.closed) {
@@ -481,7 +620,51 @@ gridEnabled.addEventListener("change", () => gridControls.classList.toggle("hidd
 gridControls.classList.toggle("hidden", !gridEnabled.checked);
 shapeLabel.textContent = `[${shapeNames[0]}]`;
 
-// Expose beat indicator function for visual window to call
+function setDefaultScene(){
+  const defaults = {
+    bgColor1: "#000000",
+    bgColor2: "#000000",
+    bgGradient: false,
+    autoGradient: false,
+    bgSource: "color",
+    gridEnabled: false,
+    gridSpacing: 50,
+    shapes: 0,
+    size: 120,
+    count: 12,
+    shapeColor1: "#000000",
+    shapeColor2: "#000000",
+    shapeGradient: false,
+    shapeAutoGradient: false,
+    strokeEnabled: false,
+    strokeColor: "#ffffff",
+    strokeWidth: 3,
+    placement: "normal",
+    animation: "bounce",
+    speed: 5,
+    invertColors: false,
+    grainEnabled: true,
+    micSensitivity: 60,
+    postFX: ["none"]
+  };
+
+  Object.entries(defaults).forEach(([id, value]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (el.type === "checkbox") el.checked = value;
+    else if (id === "postFX") {
+      Array.from(el.options).forEach(option => {
+        option.selected = option.value === "none";
+      });
+    } else el.value = value;
+  });
+  shapeLabel.textContent = `[${shapeNames[0]}]`;
+}
+
+setDefaultScene();
+
+document.querySelectorAll('input, select').forEach(el => el.dispatchEvent(new Event('input')));
+
 window.showBeat = function() {
   if (beatIndicator) {
     beatIndicator.style.opacity = 1;
