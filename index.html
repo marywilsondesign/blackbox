@@ -31,6 +31,105 @@ body {
   align-items: center;
   min-height: 100vh;
   box-sizing: border-box;
+  cursor: default;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+body, #controller, fieldset, button, input, select, label {
+  cursor: default;
+}
+
+body.dark-mode {
+  background-color: #101010;
+  color: #eeeeee;
+}
+
+body.dark-mode #controller {
+  background: #161616;
+  border-top-color: #4d4d4d;
+  border-left-color: #4d4d4d;
+  border-bottom-color: #0f0f0f;
+  border-right-color: #0f0f0f;
+  box-shadow:
+    3px 3px 0 0 #0f0f0f,
+    5px 5px 0 0 #000000;
+}
+
+body.dark-mode .groupbox {
+  border-top-color: #4d4d4d;
+  border-left-color: #4d4d4d;
+  border-bottom-color: #0f0f0f;
+  border-right-color: #0f0f0f;
+}
+
+body.dark-mode input[type="number"],
+body.dark-mode input[type="range"],
+body.dark-mode select {
+  background: #1c1c1c;
+  color: #ffffff;
+  border-top-color: #0f0f0f;
+  border-left-color: #0f0f0f;
+  border-bottom-color: #4d4d4d;
+  border-right-color: #4d4d4d;
+}
+
+body.dark-mode input[type="checkbox"] {
+  background: #1c1c1c;
+  border-top-color: #0f0f0f;
+  border-left-color: #0f0f0f;
+  border-bottom-color: #4d4d4d;
+  border-right-color: #4d4d4d;
+}
+
+body.dark-mode button {
+  background: #2a2a2a;
+  color: #f0f0f0;
+  border-top-color: #4d4d4d;
+  border-left-color: #4d4d4d;
+  border-bottom-color: #0f0f0f;
+  border-right-color: #0f0f0f;
+}
+
+body.dark-mode .system-preamble {
+  background: #1b1b1b;
+  border-color: #333333;
+  color: #f1f1f1;
+}
+
+body.dark-mode .groupbox legend {
+  background: #161616;
+  color: #eeeeee;
+}
+
+body.dark-mode label,
+body.dark-mode #micStatus,
+body.dark-mode #beatIndicator {
+  color: #f1f1f1;
+}
+
+body.dark-mode input[type="checkbox"] {
+  background: #1c1c1c;
+  border-top-color: #0f0f0f;
+  border-left-color: #0f0f0f;
+  border-bottom-color: #4d4d4d;
+  border-right-color: #4d4d4d;
+}
+
+body.dark-mode input[type="checkbox"]:checked::after {
+  border-color: #ffffff;
+}
+
+body.dark-mode button:hover { background: #3a3a3a; }
+
+body.dark-mode #portfolioLink {
+  color: #d4d4d4;
+}
+
+body.dark-mode #portfolioLink a {
+  color: #8ab4f8;
 }
 
 #controller {
@@ -110,26 +209,38 @@ input[type="color"] {
 input[type="checkbox"] {
   position: relative;
   appearance: none;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   background: var(--color-window);
   border-top: 1px solid var(--color-shadow);
   border-left: 1px solid var(--color-shadow);
   border-bottom: 1px solid var(--color-highlight);
   border-right: 1px solid var(--color-highlight);
   vertical-align: middle;
-  margin: 1px 6px 0 0;
+  margin: 1px 8px 0 0;
   cursor: pointer;
 }
 
 input[type="checkbox"]:checked::after {
   content: "";
   position: absolute;
-  top: 2px; left: 3px;
-  width: 5px; height: 9px;
+  top: 2px; left: 5px;
+  width: 6px; height: 10px;
   border: solid var(--color-windowtext);
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
+}
+
+body.dark-mode input[type="checkbox"] {
+  background: #282828;
+  border-top-color: #4a4a4a;
+  border-left-color: #4a4a4a;
+  border-bottom-color: #121212;
+  border-right-color: #121212;
+}
+
+body.dark-mode input[type="checkbox"]:checked::after {
+  border-color: #ffffff;
 }
 
 input[type="range"] {
@@ -264,6 +375,21 @@ select[multiple] { height: 100px; }
   opacity: 0;
   transition: opacity 0.4s;
 }
+#portfolioLink {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid #b0b0b0;
+  font-size: 10px;
+  text-align: center;
+  color: #333333;
+}
+#portfolioLink a {
+  color: #000080;
+  text-decoration: none;
+}
+#portfolioLink a:hover {
+  text-decoration: underline;
+}
 </style>
 </head>
 <body>
@@ -275,6 +401,14 @@ select[multiple] { height: 100px; }
   ADJUST PARAMETERS BELOW — CHANGES ARE REFLECTED IN REAL TIME IN THE VISUAL OUTPUT WINDOW.<br><br>
   <span class="warning">NOTE: THIS EXPERIENCE IS NOT OPTIMIZED FOR MOBILE DEVICES.</span>
 </div>
+
+<fieldset class="groupbox">
+<legend>INTERFACE</legend>
+<label id="darkModeLabel">
+  <input type="checkbox" id="darkModeToggle">
+  DARK MODE
+</label>
+</fieldset>
 
 <fieldset class="groupbox">
 <legend>SYSTEM</legend>
@@ -388,6 +522,10 @@ select[multiple] { height: 100px; }
 </label>
 <label><input type="checkbox" id="grainEnabled" checked> Film Grain</label>
 </fieldset>
+
+<div id="portfolioLink">
+  Designed by <a href="https://marywildesign.com" target="_blank" rel="noopener noreferrer">marywildesign.com</a>
+</div>
 
 <script>
 let visualWindow = null;
@@ -515,6 +653,11 @@ function openVisualWindow(){
 }
 
 document.getElementById("openVisual").addEventListener("click", openVisualWindow);
+
+const darkModeToggle = document.getElementById("darkModeToggle");
+darkModeToggle.addEventListener("change", () => {
+  document.body.classList.toggle("dark-mode", darkModeToggle.checked);
+});
 
 document.getElementById("randomize").addEventListener("click", () => {
   const r = () => Math.random();
