@@ -62,6 +62,8 @@ const params = {
   energy: 0
 };
 
+let hasReceivedState = false;
+let startupNoiseCanvas = null;
 let analyser = null;
 let audioData = new Uint8Array(512);
 let bassLevel = 0;
@@ -75,6 +77,25 @@ function detRandom(seed) {
     return x - Math.floor(x);
 }
 
+function generateStartupNoise(){
+  const scale = 4;
+  const w = Math.max(1, Math.floor(W / scale));
+  const h = Math.max(1, Math.floor(H / scale));
+  if (startupNoiseCanvas && startupNoiseCanvas.width === w && startupNoiseCanvas.height === h) return;
+  startupNoiseCanvas = document.createElement('canvas');
+  startupNoiseCanvas.width = w;
+  startupNoiseCanvas.height = h;
+  const nctx = startupNoiseCanvas.getContext('2d');
+  const img = nctx.createImageData(w, h);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const v = Math.random() > 0.5 ? 255 : 0;
+    d[i] = d[i+1] = d[i+2] = v;
+    d[i+3] = 32;
+  }
+  nctx.putImageData(img, 0, 0);
+}
+
 const statusOverlay = document.getElementById("statusOverlay");
 function setStatusMessage(message, warn = false){
   if(!message){
@@ -86,6 +107,54 @@ function setStatusMessage(message, warn = false){
   statusOverlay.textContent = message;
   statusOverlay.style.display = "block";
   statusOverlay.classList.toggle("warn", warn);
+}
+
+let startupAngle = 0;
+
+function drawStartupStatic(){
+  ctx.fillStyle = "#d9d9d9";
+  ctx.fillRect(0, 0, W, H);
+
+  generateStartupNoise();
+  if (startupNoiseCanvas) {
+    ctx.save();
+    ctx.globalAlpha = 0.16;
+    ctx.drawImage(startupNoiseCanvas, -1 + Math.random() * 2, 0, W + 2, H);
+    ctx.restore();
+  }
+
+  const squareSize = Math.max(60, Math.min(W, H) * 0.24);
+  const bounce = Math.sin(startupAngle * 2.1) * (H * 0.14);
+  const x = W / 2 + Math.sin(startupAngle * 1.3) * 6;
+  const y = H / 2 + bounce;
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(Math.sin(startupAngle * 1.5) * 0.08);
+  ctx.fillStyle = "#0b0b0b";
+  ctx.fillRect(-squareSize / 2, -squareSize / 2, squareSize, squareSize);
+  ctx.restore();
+
+  ctx.save();
+  for (let i = 0; i < 5; i++) {
+    const bandY = Math.random() * H;
+    const bandH = 1 + Math.random() * 3;
+    const alpha = 0.04 + Math.random() * 0.08;
+    ctx.fillStyle = `rgba(0,0,0,${alpha})`;
+    ctx.fillRect(0, bandY, W, bandH);
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalAlpha = 0.05;
+  ctx.fillStyle = "#ffffff";
+  for (let i = 0; i < 3; i++) {
+    const lineY = Math.random() * H;
+    ctx.fillRect(0, lineY, W, 1 + Math.random() * 2);
+  }
+  ctx.restore();
+
+  startupAngle += 0.032;
 }
 
 async function initCamera(type){
@@ -206,27 +275,27 @@ function updateAudio() {
   for (let i = 8; i <= 20; i++) mid += audioData[i];
   mid /= 13;
 
-  const sensitivity = Math.max(0.2, Math.min(1, params.micSensitivity || 0.6));
+  const sensitivity = Math.max(0.2, Math.min(1, params.micSensitivity || 0.5));
   const currentBass = bass / 255;
   const currentMid = mid / 255;
 
   bassLevel = bassLevel * 0.72 + currentBass * 0.28;
 
-  const beatThreshold = 0.52 - (sensitivity - 0.6) * 0.14;
-  const transientFactor = 1.6 - (sensitivity - 0.6) * 0.4;
+  const beatThreshold = 0.60 - (sensitivity - 0.5) * 0.10;
+  const transientFactor = 1.95 - (sensitivity - 0.5) * 0.18;
   const now = Date.now();
-  const isBassHit = currentBass > beatThreshold && currentBass > currentMid * 1.15;
+  const isBassHit = currentBass > beatThreshold && currentBass > currentMid * 1.25;
   const isTransient = currentBass > bassLevel * transientFactor;
-  const strongBeat = isBassHit && isTransient && currentMid < 0.58 && (now - lastBeatTime > 180);
+  const strongBeat = isBassHit && isTransient && currentMid < 0.6 && (now - lastBeatTime > 200);
 
   if (strongBeat) {
-    beatPulse = 1.8;
+    beatPulse = 1.4 + Math.min(1.2, currentBass * 1.6);
     lastBeatTime = now;
     if (typeof window.showBeat === "function") window.showBeat();
   }
 
-  beatPulse *= 0.66;
-  params.beatLevel = Math.max(bassLevel * 2.4, beatPulse * 1.5);
+  beatPulse *= 0.58;
+  params.beatLevel = Math.max(bassLevel * 2.0, beatPulse * 1.2);
   params.energy = bassLevel;
 }
 
@@ -258,11 +327,28 @@ function drawShapeVisual(size, index){
     ctx.fillStyle = (index % 2 === 0 ? shapeColor1 : shapeColor2);
   }
 
-  if (flash > 0.3) ctx.fillStyle = "#ffeeaa";
+  if (flash > 0.2) {
+    const hueShift = (params.angle * 18 + index * 22 + flash * 98) % 360;
+    const pulseColor = `hsl(${hueShift}, ${72 + flash * 16}%, ${48 + flash * 18}%)`;
+    if (params.shapeGradient) {
+      const fg = ctx.createLinearGradient(-size, -size, size, size);
+      fg.addColorStop(0, pulseColor);
+      fg.addColorStop(1, shapeColor2);
+      ctx.fillStyle = fg;
+    } else {
+      ctx.fillStyle = pulseColor;
+    }
+    ctx.shadowColor = pulseColor;
+    ctx.shadowBlur = Math.min(22, flash * 32);
+    ctx.globalAlpha = 0.94 + Math.min(0.06, flash * 0.06);
+  } else {
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+  }
 
   if(params.strokeEnabled){
     ctx.strokeStyle = params.strokeColor;
-    ctx.lineWidth = params.strokeWidth * (2 + params.beatLevel * 4);
+    ctx.lineWidth = params.strokeWidth * (2 + params.beatLevel * 3);
   }
 
   shapePath(currentShape, size * react, index);
@@ -449,6 +535,12 @@ function updateAutoGradient() {
 }
 
 function draw(){
+  if (!hasReceivedState) {
+    drawStartupStatic();
+    requestAnimationFrame(draw);
+    return;
+  }
+
   updateAudio();
   updateAutoGradient();
 
@@ -566,6 +658,8 @@ draw();
 window.addEventListener("message", async e => {
   const d = e.data;
   if(!d || typeof d !== 'object') return;
+
+  hasReceivedState = true;
 
   if("bgSource" in d){
     params.bgSource = d.bgSource;
