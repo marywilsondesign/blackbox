@@ -669,14 +669,25 @@ window.addEventListener("message", async e => {
   const d = e.data;
   if(!d || typeof d !== 'object') return;
 
-  hasReceivedState = true;
+  // Do NOT automatically switch out of the startup scene on every incoming message.
+  // Only activate the full visual when the message includes an explicit activation flag,
+  // or when the user interacts with the page.
 
   if("bgSource" in d){
     params.bgSource = d.bgSource;
     await initCamera(d.bgSource);
   }
 
-  Object.assign(params, d);
+  // Merge any provided params so the controller can probe current values, but do not
+  // treat this as the 'start' signal unless the message asks to apply to the visual.
+  const clone = Object.assign({}, d);
+  delete clone.type; // ignore message envelope fields
+  if(Object.keys(clone).length) Object.assign(params, clone);
+
+  // If the controller explicitly requests activation, switch to the main visual loop.
+  if(d.activateVisual === true || d.applyToVisual === true || d.type === 'activate'){
+    hasReceivedState = true;
+  }
 
   if("micSyncEnabled" in d){
     params.micSyncEnabled = d.micSyncEnabled;
@@ -695,6 +706,14 @@ window.addEventListener("message", async e => {
     }
   }
 });
+
+// User interaction should also activate the visual (click, keypress, or touch)
+function activateFromUser(){
+  if(!hasReceivedState){ hasReceivedState = true; }
+}
+window.addEventListener('click', activateFromUser, {passive:true});
+window.addEventListener('keydown', activateFromUser, {passive:true});
+window.addEventListener('touchstart', activateFromUser, {passive:true});
 </script>
 </body>
 </html>
