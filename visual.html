@@ -31,15 +31,15 @@ let cameraStream = null;
 
 const params = {
   bgSource: "color",
-  shapes: 0,
-  size: 120,
-  count: 12,
+  shapes: 1,
+  size: 140,
+  count: 1,
   shapeColor1: "#000000",
   shapeColor2: "#000000",
   shapeGradient: false,
   shapeAutoGradient: false,
-  bgColor1: "#000000",
-  bgColor2: "#000000",
+  bgColor1: "#ffffff",
+  bgColor2: "#ffffff",
   bgGradient: false,
   autoGradient: false,
   invertColors: false,
@@ -48,10 +48,10 @@ const params = {
   speed: 5,
   angle: 0,
   particles: [],
-  gridEnabled: false,
-  gridColor: "#222222",
-  gridSpacing: 50,
-  postFX: ["none"],
+  gridEnabled: true,
+  gridColor: "#000000",
+  gridSpacing: 20,
+  postFX: ["crt","threshold"],
   fxBuffers: {},
   strokeColor: "#ffffff",
   strokeWidth: 3,
@@ -88,10 +88,13 @@ function generateStartupNoise(){
   const nctx = startupNoiseCanvas.getContext('2d');
   const img = nctx.createImageData(w, h);
   const d = img.data;
+  // deterministic-ish noise for a static startup look
+  let seed = 1;
+  function rnd() { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }
   for (let i = 0; i < d.length; i += 4) {
-    const v = Math.random() > 0.5 ? 255 : 0;
+    const v = rnd() > 0.5 ? 255 : 0;
     d[i] = d[i+1] = d[i+2] = v;
-    d[i+3] = 32;
+    d[i+3] = 28;
   }
   nctx.putImageData(img, 0, 0);
 }
@@ -112,49 +115,46 @@ function setStatusMessage(message, warn = false){
 let startupAngle = 0;
 
 function drawStartupStatic(){
-  ctx.fillStyle = "#d9d9d9";
+  // Opening scene: white background, single bouncing black box, small black grid, CRT+threshold FX
+  ctx.fillStyle = params.bgColor1 || "#ffffff";
   ctx.fillRect(0, 0, W, H);
 
   generateStartupNoise();
   if (startupNoiseCanvas) {
     ctx.save();
-    ctx.globalAlpha = 0.16;
-    ctx.drawImage(startupNoiseCanvas, -1 + Math.random() * 2, 0, W + 2, H);
+    ctx.globalAlpha = 0.06;
+    ctx.drawImage(startupNoiseCanvas, 0, 0, W, H);
     ctx.restore();
   }
 
-  const squareSize = Math.max(60, Math.min(W, H) * 0.24);
-  const bounce = Math.sin(startupAngle * 2.1) * (H * 0.14);
-  const x = W / 2 + Math.sin(startupAngle * 1.3) * 6;
+  // Draw grid if enabled
+  drawGrid();
+
+  // single centered bouncing box
+  const squareSize = Math.max(60, Math.min(W, H) * 0.20);
+  const bounce = Math.sin(startupAngle * 2.2) * (H * 0.06);
+  const x = W / 2;
   const y = H / 2 + bounce;
 
   ctx.save();
   ctx.translate(x, y);
-  ctx.rotate(Math.sin(startupAngle * 1.5) * 0.08);
-  ctx.fillStyle = "#0b0b0b";
+  ctx.fillStyle = "#000000";
   ctx.fillRect(-squareSize / 2, -squareSize / 2, squareSize, squareSize);
   ctx.restore();
 
-  ctx.save();
-  for (let i = 0; i < 5; i++) {
-    const bandY = Math.random() * H;
-    const bandH = 1 + Math.random() * 3;
-    const alpha = 0.04 + Math.random() * 0.08;
-    ctx.fillStyle = `rgba(0,0,0,${alpha})`;
-    ctx.fillRect(0, bandY, W, bandH);
-  }
-  ctx.restore();
+  // increment to animate bounce
+  startupAngle += 0.045;
 
-  ctx.save();
-  ctx.globalAlpha = 0.05;
-  ctx.fillStyle = "#ffffff";
-  for (let i = 0; i < 3; i++) {
-    const lineY = Math.random() * H;
-    ctx.fillRect(0, lineY, W, 1 + Math.random() * 2);
+  // ensure opening postFX include crt and threshold
+  if(!params.postFX || (params.postFX.length===1 && params.postFX[0]==='none')){
+    params.postFX = ["crt","threshold"];
+  } else {
+    if(!params.postFX.includes("crt")) params.postFX.push("crt");
+    if(!params.postFX.includes("threshold")) params.postFX.push("threshold");
   }
-  ctx.restore();
 
-  startupAngle += 0.032;
+  // apply post effects to mimic final look
+  applyPostFX();
 }
 
 async function initCamera(type){
@@ -654,6 +654,16 @@ window.addEventListener("resize", () => {
 });
 
 draw();
+
+// Send current visual params to opener/parent once so controllers can reflect the startup static
+function sendCurrentState(){
+  try{
+    const snapshot = Object.assign({}, params);
+    if(window.parent && window.parent !== window) window.parent.postMessage({type:'visualState', state: snapshot}, '*');
+    if(window.opener && !window.opener.closed) window.opener.postMessage({type:'visualState', state: snapshot}, '*');
+  }catch(e){/* ignore */}
+}
+setTimeout(sendCurrentState, 150);
 
 window.addEventListener("message", async e => {
   const d = e.data;
