@@ -613,61 +613,9 @@ function syncVisualState(){
   }
 }
 
-function openVisualWindow(){
-  if(visualWindow && !visualWindow.closed){
-    visualWindow.focus();
-    syncVisualState();
-    return;
-  }
-
-  const screenLeft = window.screen.availLeft ?? window.screenX ?? window.screenLeft ?? 0;
-  const screenTop = window.screen.availTop ?? window.screenY ?? window.screenTop ?? 0;
-  const screenWidth = window.screen.availWidth ?? window.innerWidth;
-  const screenHeight = window.screen.availHeight ?? window.innerHeight;
-
-  const ctrlLeft = window.screenX ?? window.screenLeft ?? screenLeft;
-  const ctrlTop = window.screenY ?? window.screenTop ?? screenTop;
-  const ctrlWidth = window.outerWidth || Math.min(800, screenWidth);
-  const ctrlHeight = window.outerHeight || Math.min(900, screenHeight);
-
-  const rightSpace = screenLeft + screenWidth - (ctrlLeft + ctrlWidth);
-  const leftSpace = ctrlLeft - screenLeft;
-
-  let left = ctrlLeft + ctrlWidth;
-  if (rightSpace < ctrlWidth && leftSpace >= ctrlWidth) {
-    left = Math.max(screenLeft, ctrlLeft - ctrlWidth);
-  } else if (rightSpace < ctrlWidth) {
-    left = screenLeft + 20;
-  }
-
-  const width = ctrlWidth;
-  const height = ctrlHeight;
-  const top = ctrlTop;
-  const features = `toolbar=no,location=no,status=no,menubar=no,scrollbars=no,resizable=yes,width=${width},height=${height},left=${left},top=${top}`;
-
-  visualWindow = window.open("visual.html", "visual", features);
-  if (visualWindow) {
-    visualWindow.focus();
-    setTimeout(syncVisualState, 250);
-  }
-}
-
-document.getElementById("openVisual").addEventListener("click", openVisualWindow);
-
-const darkModeToggle = document.getElementById("darkModeToggle");
-darkModeToggle.addEventListener("change", () => {
-  document.body.classList.toggle("dark-mode", darkModeToggle.checked);
-});
-
-document.getElementById("randomize").addEventListener("click", () => {
+function randomizeVisualState(){
   const r = () => Math.random();
   const randInt = (min, max) => Math.floor(min + r() * (max - min + 1));
-  const brightColor = () => {
-    const h = randInt(0, 360);
-    const s = randInt(70, 100);
-    const l = randInt(45, 70);
-    return `hsl(${h}, ${s}%, ${l}%)`;
-  };
 
   document.getElementById("shapes").value = randInt(1, 5);
   document.getElementById("size").value = randInt(50, 260);
@@ -719,7 +667,62 @@ document.getElementById("randomize").addEventListener("click", () => {
 
   const shapeVal = parseInt(document.getElementById("shapes").value);
   document.getElementById("shapeLabel").textContent = `[${shapeNames[shapeVal]}]`;
+}
+
+function openVisualWindow(){
+  randomizeVisualState();
+
+  if(visualWindow && !visualWindow.closed){
+    visualWindow.focus();
+    syncVisualState();
+    return;
+  }
+
+  const screenLeft = window.screen.availLeft ?? window.screenX ?? window.screenLeft ?? 0;
+  const screenTop = window.screen.availTop ?? window.screenY ?? window.screenTop ?? 0;
+  const screenWidth = window.screen.availWidth ?? window.innerWidth;
+  const screenHeight = window.screen.availHeight ?? window.innerHeight;
+
+  const ctrlLeft = window.screenX ?? window.screenLeft ?? screenLeft;
+  const ctrlTop = window.screenY ?? window.screenTop ?? screenTop;
+  const ctrlWidth = window.outerWidth || Math.min(800, screenWidth);
+  const ctrlHeight = window.outerHeight || Math.min(900, screenHeight);
+
+  const rightSpace = screenLeft + screenWidth - (ctrlLeft + ctrlWidth);
+  const leftSpace = ctrlLeft - screenLeft;
+
+  let left = ctrlLeft + ctrlWidth;
+  if (rightSpace < ctrlWidth && leftSpace >= ctrlWidth) {
+    left = Math.max(screenLeft, ctrlLeft - ctrlWidth);
+  } else if (rightSpace < ctrlWidth) {
+    left = screenLeft + 20;
+  }
+
+  const width = ctrlWidth;
+  const height = ctrlHeight;
+  const top = ctrlTop;
+  const features = `toolbar=no,location=no,status=no,menubar=no,scrollbars=no,resizable=yes,width=${width},height=${height},left=${left},top=${top}`;
+
+  visualWindow = window.open("visual.html", "visual", features);
+  if (visualWindow) {
+    visualWindow.focus();
+    const initialState = Object.assign({ activateVisual: true }, getCurrentState());
+    setTimeout(() => {
+      if (visualWindow && !visualWindow.closed) {
+        visualWindow.postMessage(initialState, "*");
+      }
+    }, 250);
+  }
+}
+
+document.getElementById("openVisual").addEventListener("click", openVisualWindow);
+
+const darkModeToggle = document.getElementById("darkModeToggle");
+darkModeToggle.addEventListener("change", () => {
+  document.body.classList.toggle("dark-mode", darkModeToggle.checked);
 });
+
+document.getElementById("randomize").addEventListener("click", randomizeVisualState);
 
 const shapesSlider = document.getElementById("shapes");
 const shapeLabel = document.getElementById("shapeLabel");
