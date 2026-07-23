@@ -31,15 +31,15 @@ let cameraStream = null;
 
 const params = {
   bgSource: "color",
-  shapes: 1,
-  size: 140,
-  count: 1,
-  shapeColor1: "#000000",
-  shapeColor2: "#000000",
+  shapes: 2,
+  size: 150,
+  count: 14,
+  shapeColor1: "#ffffff",
+  shapeColor2: "#d8d8d8",
   shapeGradient: false,
   shapeAutoGradient: false,
-  bgColor1: "#ffffff",
-  bgColor2: "#ffffff",
+  bgColor1: "#050505",
+  bgColor2: "#111111",
   bgGradient: false,
   autoGradient: false,
   invertColors: false,
@@ -48,10 +48,10 @@ const params = {
   speed: 5,
   angle: 0,
   particles: [],
-  gridEnabled: true,
+  gridEnabled: false,
   gridColor: "#000000",
   gridSpacing: 20,
-  postFX: ["crt","threshold"],
+  postFX: ["none"],
   fxBuffers: {},
   strokeColor: "#ffffff",
   strokeWidth: 3,
@@ -62,8 +62,6 @@ const params = {
   energy: 0
 };
 
-let hasReceivedState = true;
-let startupNoiseCanvas = null;
 let analyser = null;
 let audioData = new Uint8Array(512);
 let bassLevel = 0;
@@ -75,28 +73,6 @@ const shapeTypes = ["none", "square", "random", "circle", "starburst", "worm"];
 function detRandom(seed) {
     const x = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
     return x - Math.floor(x);
-}
-
-function generateStartupNoise(){
-  const scale = 4;
-  const w = Math.max(1, Math.floor(W / scale));
-  const h = Math.max(1, Math.floor(H / scale));
-  if (startupNoiseCanvas && startupNoiseCanvas.width === w && startupNoiseCanvas.height === h) return;
-  startupNoiseCanvas = document.createElement('canvas');
-  startupNoiseCanvas.width = w;
-  startupNoiseCanvas.height = h;
-  const nctx = startupNoiseCanvas.getContext('2d');
-  const img = nctx.createImageData(w, h);
-  const d = img.data;
-  // deterministic-ish noise for a static startup look
-  let seed = 1;
-  function rnd() { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }
-  for (let i = 0; i < d.length; i += 4) {
-    const v = rnd() > 0.5 ? 255 : 0;
-    d[i] = d[i+1] = d[i+2] = v;
-    d[i+3] = 28;
-  }
-  nctx.putImageData(img, 0, 0);
 }
 
 const statusOverlay = document.getElementById("statusOverlay");
@@ -112,56 +88,11 @@ function setStatusMessage(message, warn = false){
   statusOverlay.classList.toggle("warn", warn);
 }
 
-let startupAngle = 0;
-
-function drawStartupStatic(){
-  // Opening scene: white background, single bouncing black box, small black grid, CRT+threshold FX
-  ctx.fillStyle = params.bgColor1 || "#ffffff";
-  ctx.fillRect(0, 0, W, H);
-
-  generateStartupNoise();
-  if (startupNoiseCanvas) {
-    ctx.save();
-    ctx.globalAlpha = 0.06;
-    ctx.drawImage(startupNoiseCanvas, 0, 0, W, H);
-    ctx.restore();
-  }
-
-  // Draw grid if enabled
-  drawGrid();
-
-  // single centered bouncing box
-  const squareSize = Math.max(60, Math.min(W, H) * 0.20);
-  const bounce = Math.sin(startupAngle * 2.2) * (H * 0.06);
-  const x = W / 2;
-  const y = H / 2 + bounce;
-
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.fillStyle = "#000000";
-  ctx.fillRect(-squareSize / 2, -squareSize / 2, squareSize, squareSize);
-  ctx.restore();
-
-  // increment to animate bounce
-  startupAngle += 0.045;
-
-  // ensure opening postFX include crt and threshold
-  if(!params.postFX || (params.postFX.length===1 && params.postFX[0]==='none')){
-    params.postFX = ["crt","threshold"];
-  } else {
-    if(!params.postFX.includes("crt")) params.postFX.push("crt");
-    if(!params.postFX.includes("threshold")) params.postFX.push("threshold");
-  }
-
-  // apply post effects to mimic final look
-  applyPostFX();
-}
-
 async function initCamera(type){
   if(cameraStream){ cameraStream.getTracks().forEach(t=>t.stop()); cameraStream=null; videoBg.style.display="none"; }
   if(type==="color"){ videoBg.style.display="none"; setStatusMessage(""); return; }
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-    setStatusMessage("Camera not supported in this browser. Reverting to color background.", true);
+    setStatusMessage("Camera not supported in this browser. Reverting to colour background.", true);
     params.bgSource = "color";
     return;
   }
@@ -171,7 +102,7 @@ async function initCamera(type){
     if(type==="macbookCam") target = devices.find(d=>/FaceTime/i.test(d.label)) || target;
     if(type==="usbCam") target = devices.find(d=>/USB/i.test(d.label)) || target;
     if(!target){
-      setStatusMessage("No camera found. Reverting to color background.", true);
+      setStatusMessage("No camera found. Reverting to colour background.", true);
       params.bgSource = "color";
       return;
     }
@@ -183,7 +114,7 @@ async function initCamera(type){
     setStatusMessage("Camera source enabled. Allow access if prompted.", false);
   } catch(e){
     console.warn("Camera error", e);
-    setStatusMessage("Camera access denied or unavailable. Reverting to color background.", true);
+    setStatusMessage("Camera access denied or unavailable. Reverting to colour background.", true);
     params.bgSource = "color";
     videoBg.style.display="none";
   }
@@ -535,12 +466,6 @@ function updateAutoGradient() {
 }
 
 function draw(){
-  if (!hasReceivedState) {
-    drawStartupStatic();
-    requestAnimationFrame(draw);
-    return;
-  }
-
   updateAudio();
   updateAutoGradient();
 
@@ -669,10 +594,6 @@ window.addEventListener("message", async e => {
   const d = e.data;
   if(!d || typeof d !== 'object') return;
 
-  // Do NOT automatically switch out of the startup scene on every incoming message.
-  // Only activate the full visual when the message includes an explicit activation flag,
-  // or when the user interacts with the page.
-
   if("bgSource" in d){
     params.bgSource = d.bgSource;
     await initCamera(d.bgSource);
@@ -683,11 +604,6 @@ window.addEventListener("message", async e => {
   const clone = Object.assign({}, d);
   delete clone.type; // ignore message envelope fields
   if(Object.keys(clone).length) Object.assign(params, clone);
-
-  // If the controller explicitly requests activation, switch to the main visual loop.
-  if(d.activateVisual === true || d.applyToVisual === true || d.type === 'activate'){
-    hasReceivedState = true;
-  }
 
   if("micSyncEnabled" in d){
     params.micSyncEnabled = d.micSyncEnabled;
@@ -707,13 +623,6 @@ window.addEventListener("message", async e => {
   }
 });
 
-// User interaction should also activate the visual (click, keypress, or touch)
-function activateFromUser(){
-  if(!hasReceivedState){ hasReceivedState = true; }
-}
-window.addEventListener('click', activateFromUser, {passive:true});
-window.addEventListener('keydown', activateFromUser, {passive:true});
-window.addEventListener('touchstart', activateFromUser, {passive:true});
 </script>
 </body>
 </html>

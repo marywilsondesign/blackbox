@@ -365,7 +365,11 @@ select[multiple] { height: 100px; }
   font-weight: bold;
 }
 
-#micSyncLabel { margin-top:12px; font-weight:bold; font-size: 12px; }
+body.dark-mode .system-preamble .warning {
+  color: #ff7a3d;
+}
+
+#micSyncLabel { margin-top:12px; font-size: 12px; }
 #micStatus { font-size:10px; margin:4px 0 8px 22px; min-height: 14px; }
 #beatIndicator {
   font-size: 10px;
@@ -399,7 +403,7 @@ select[multiple] { height: 100px; }
 <div class="system-preamble">
   'OPEN VISUAL' IS THE LIVE CONTROLLED OUTPUT.<br><br>
   ADJUST PARAMETERS BELOW — CHANGES ARE REFLECTED IN REAL TIME IN THE VISUAL OUTPUT WINDOW.<br><br>
-  <span class="warning">NOTE: THIS EXPERIENCE IS NOT OPTIMIZED FOR MOBILE DEVICES.</span>
+  <span class="warning">NOTE: THIS EXPERIENCE IS NOT OPTIMISED FOR MOBILE DEVICES.</span>
 </div>
 
 <fieldset class="groupbox">
@@ -413,22 +417,22 @@ select[multiple] { height: 100px; }
 <fieldset class="groupbox">
 <legend>SYSTEM</legend>
 <button id="openVisual">[ OPEN VISUAL ]</button>
-<button id="randomize">[ I'M FEELING LUCKY ]</button>
+<button id="randomise">[ I'M FEELING LUCKY ]</button>
 
 <label id="micSyncLabel">
   <input type="checkbox" id="micSyncEnabled"> 
-  MIC MODE (MUSIC REACTIVE)
+  MIC MODE (SYNCOPATE TO SOUND)
 </label>
 <label>mic sensitivity: <input type="range" id="micSensitivity" min="20" max="100" value="60"></label>
 <div id="micStatus"></div>
 <div id="beatIndicator">♪ BEAT DETECTED ♪</div>
 
 <div id="bgColorControls">
-  <label>BG Color A:
+  <label>BG Colour A:
     <input type="color" id="bgColor1" value="#000000">
     <span id="bgColor1Preview" class="colorPreview"></span>
   </label>
-  <label>BG Color B:
+  <label>BG Colour B:
     <input type="color" id="bgColor2" value="#000000">
     <span id="bgColor2Preview" class="colorPreview"></span>
   </label>
@@ -445,7 +449,7 @@ select[multiple] { height: 100px; }
 
 <label><input type="checkbox" id="gridEnabled"> Show Grid</label>
 <div id="gridControls" class="subgroup hidden">
-  <label>Grid Color:
+  <label>Grid Colour:
     <input type="color" id="gridColor" value="#222222">
     <span id="gridColorPreview" class="colorPreview"></span>
   </label>
@@ -465,11 +469,11 @@ select[multiple] { height: 100px; }
 
 <fieldset class="groupbox">
 <legend>STYLE</legend>
-<label>Fill Color A:
+<label>Fill Colour A:
   <input type="color" id="shapeColor1" value="#000000">
   <span id="shapeColor1Preview" class="colorPreview"></span>
 </label>
-<label>Fill Color B:
+<label>Fill Colour B:
   <input type="color" id="shapeColor2" value="#000000">
   <span id="shapeColor2Preview" class="colorPreview"></span>
 </label>
@@ -477,7 +481,7 @@ select[multiple] { height: 100px; }
 <label><input type="checkbox" id="shapeAutoGradient"> Auto Cycle</label>
 
 <label><input type="checkbox" id="strokeEnabled"> Stroke Enabled</label>
-<label>Stroke Color:
+<label>Stroke Colour:
   <input type="color" id="strokeColor" value="#ffffff">
   <span id="strokeColorPreview" class="colorPreview"></span>
 </label>
@@ -551,7 +555,7 @@ micToggle.addEventListener("change", async () => {
       analyser.smoothingTimeConstant = 0.65;
       source.connect(analyser);
       
-      micStatus.textContent = "✅ MIC CONNECTED — BASS / MUSIC REACTIVE";
+      micStatus.textContent = "✅ MIC CONNECTED — SYNCOPATE TO SOUND";
       micStatus.style.color = "#00cc00";
       
       if (visualWindow && !visualWindow.closed) {
@@ -613,7 +617,7 @@ function syncVisualState(){
   }
 }
 
-function randomizeVisualState(){
+function randomiseVisualState(){
   const r = () => Math.random();
   const randInt = (min, max) => Math.floor(min + r() * (max - min + 1));
 
@@ -670,7 +674,7 @@ function randomizeVisualState(){
 }
 
 function openVisualWindow(){
-  randomizeVisualState();
+  randomiseVisualState();
 
   if(visualWindow && !visualWindow.closed){
     visualWindow.focus();
@@ -707,11 +711,15 @@ function openVisualWindow(){
   if (visualWindow) {
     visualWindow.focus();
     const initialState = Object.assign({ activateVisual: true }, getCurrentState());
-    setTimeout(() => {
+    const postInitialState = () => {
       if (visualWindow && !visualWindow.closed) {
         visualWindow.postMessage(initialState, "*");
       }
-    }, 250);
+    };
+
+    postInitialState();
+    setTimeout(postInitialState, 120);
+    setTimeout(postInitialState, 400);
   }
 }
 
@@ -722,7 +730,7 @@ darkModeToggle.addEventListener("change", () => {
   document.body.classList.toggle("dark-mode", darkModeToggle.checked);
 });
 
-document.getElementById("randomize").addEventListener("click", randomizeVisualState);
+document.getElementById("randomise").addEventListener("click", randomiseVisualState);
 
 const shapesSlider = document.getElementById("shapes");
 const shapeLabel = document.getElementById("shapeLabel");
