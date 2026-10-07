@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-GB">
 <head>
 <meta charset="UTF-8">
 <title>blackbox visualiser </title>
@@ -21,33 +21,92 @@ canvas{z-index:1;}
 const canvas = document.getElementById("visual");
 const ctx = canvas.getContext("2d");
 
-let W = window.innerWidth;
+let W = window.innerWidth;           // logical (CSS) size: all layout and physics work in these
 let H = window.innerHeight;
-canvas.width = W;
-canvas.height = H;
+let dpr = 1;
+let PW = 1;                          // device pixels: only the image-data passes use these
+let PH = 1;
+
+// Cap the backing-store scale. 1.5x is crisp on a Retina display without quadrupling
+// the per-pixel work in the readback passes at full screen.
+const MAX_DPR = 1.5;
+
+function resizeCanvas(){
+  W = window.innerWidth;
+  H = window.innerHeight;
+  dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
+  PW = Math.max(1, Math.round(W * dpr));
+  PH = Math.max(1, Math.round(H * dpr));
+  canvas.width = PW;
+  canvas.height = PH;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+resizeCanvas();
+
+/* Film grain: one noise tile drawn as a repeating pattern. This replaces a loop that
+   called Math.random() for every channel of every pixel, and is a single pattern fill.
+   Tune GRAIN_BASE / GRAIN_BEAT for more or less grain. */
+const GRAIN_TILE = 512;
+const GRAIN_BASE = 0.16;
+const GRAIN_BEAT = 0.34;
+
+const grainCanvas = document.createElement("canvas");
+grainCanvas.width = GRAIN_TILE;
+grainCanvas.height = GRAIN_TILE;
+(function buildGrainTile(){
+  const gctx = grainCanvas.getContext("2d");
+  const img = gctx.createImageData(GRAIN_TILE, GRAIN_TILE);
+  const d = img.data;
+  for(let i = 0; i < d.length; i += 4){
+    const v = 128 + (Math.random() - 0.5) * 190;
+    d[i] = d[i+1] = d[i+2] = v;
+    d[i+3] = 255;
+  }
+  gctx.putImageData(img, 0, 0);
+})();
+const grainPattern = ctx.createPattern(grainCanvas, "repeat");
+
+function drawGrain(){
+  const alpha = Math.min(0.85, GRAIN_BASE + params.beatLevel * GRAIN_BEAT);
+  if(alpha <= 0.001) return;
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);      // grain is applied in device pixels
+  ctx.globalCompositeOperation = "overlay";
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = grainPattern;
+  ctx.translate(-Math.random() * GRAIN_TILE, -Math.random() * GRAIN_TILE);
+  ctx.fillRect(0, 0, PW + GRAIN_TILE, PH + GRAIN_TILE);
+  ctx.restore();
+}
 
 const videoBg = document.getElementById("videoBg");
 let cameraStream = null;
 
 const params = {
   bgSource: "color",
-  shapes: 2,
+  // The opening moment, matching the controller's intro: one black square bouncing on a
+  // plain white ground, before a random scene settles in over the top of it.
+  shapes: 1,
   size: 150,
-  count: 14,
-  shapeColor1: "#ffffff",
-  shapeColor2: "#d8d8d8",
+  count: 1,
+  shapeColor1: "#000000",
+  shapeColor2: "#000000",
   shapeGradient: false,
   shapeAutoGradient: false,
-  bgColor1: "#050505",
-  bgColor2: "#111111",
+  bgColor1: "#ffffff",
+  bgColor2: "#ffffff",
   bgGradient: false,
   autoGradient: false,
   invertColors: false,
   animation: "bounce",
-  placement: "normal",
-  speed: 5,
+  placement: "scatter",
+  speed: 8,
+  turbulence: 1,
+  gravity: 1,
+  drag: 1,
+  cohesion: 1,
   angle: 0,
-  particles: [],
   gridEnabled: false,
   gridColor: "#000000",
   gridSpacing: 20,
@@ -55,14 +114,84 @@ const params = {
   fxBuffers: {},
   strokeColor: "#ffffff",
   strokeWidth: 3,
-  strokeEnabled: true,
-  grainEnabled: true,
+  strokeEnabled: false,
+  grainEnabled: false,
   micSyncEnabled: false,
   beatLevel: 0,
   energy: 0
 };
 
+/* ---------------------------------------------------------------------------
+   Colour cross-fade
+   The controller sends colour targets; the values actually drawn ease toward
+   them, so a palette change settles in rather than snapping.
+--------------------------------------------------------------------------- */
+
+const FADE_KEYS = ["shapeColor1", "shapeColor2", "bgColor1", "bgColor2", "gridColor", "strokeColor"];
+const FADE_SECONDS = 0.5;
+const colourTargets = {};
+FADE_KEYS.forEach(k => { colourTargets[k] = params[k]; });
+
+function hslToRgb(h, s, l){
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const hp = (h * 6) % 6;
+  const x = c * (1 - Math.abs(hp % 2 - 1));
+  const m = l - c / 2;
+  let r, g, b;
+  if(hp < 1)      { r = c; g = x; b = 0; }
+  else if(hp < 2) { r = x; g = c; b = 0; }
+  else if(hp < 3) { r = 0; g = c; b = x; }
+  else if(hp < 4) { r = 0; g = x; b = c; }
+  else if(hp < 5) { r = x; g = 0; b = c; }
+  else            { r = c; g = 0; b = x; }
+  return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
+}
+
+function parseColour(str){
+  if(typeof str !== "string") return null;
+  const s = str.trim();
+  if(s.charAt(0) === "#"){
+    let hex = s.slice(1);
+    if(hex.length === 3) hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+    if(!/^[0-9a-fA-F]{6}$/.test(hex)) return null;
+    return [parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16)];
+  }
+  const hsl = s.match(/^hsl\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)%\s*,\s*(-?[\d.]+)%\s*\)$/i);
+  if(hsl){
+    const h = (((parseFloat(hsl[1]) % 360) + 360) % 360) / 360;
+    return hslToRgb(h, parseFloat(hsl[2]) / 100, parseFloat(hsl[3]) / 100);
+  }
+  const rgb = s.match(/^rgba?\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)/i);
+  if(rgb) return [parseFloat(rgb[1]), parseFloat(rgb[2]), parseFloat(rgb[3])];
+  return null;
+}
+
+function stepColourFade(dt){
+  const k = Math.min(1, dt / FADE_SECONDS);
+  for(let i = 0; i < FADE_KEYS.length; i++){
+    const key = FADE_KEYS[i];
+    const target = colourTargets[key];
+    if(target === params[key]) continue;
+    const from = parseColour(params[key]);
+    const to = parseColour(target);
+    if(!from || !to){ params[key] = target; continue; }   // unknown format: switch at once
+    let settled = true;
+    const out = [0, 0, 0];
+    for(let c = 0; c < 3; c++){
+      out[c] = from[c] + (to[c] - from[c]) * k;
+      // Snap the last invisible sliver so the value lands exactly on the target and
+      // the fade stops running, rather than creeping toward it forever.
+      if(Math.abs(to[c] - out[c]) <= 2.5) out[c] = to[c];
+      else settled = false;
+    }
+    params[key] = settled ? target
+      : `rgb(${Math.round(out[0])},${Math.round(out[1])},${Math.round(out[2])})`;
+  }
+}
+
 let analyser = null;
+let visualMicStream = null;
+let visualAudioCtx = null;
 let audioData = new Uint8Array(512);
 let bassLevel = 0;
 let beatPulse = 0;
@@ -75,8 +204,610 @@ function detRandom(seed) {
     return x - Math.floor(x);
 }
 
+/* ---------------------------------------------------------------------------
+   Motion layer
+   Elements carry their own state and are integrated with delta time, so motion
+   is frame-rate independent. Each motion mode is a force model over the same
+   element set, so switching modes does not need a different code path in draw().
+--------------------------------------------------------------------------- */
+
+const elements = [];
+let beatImpulse = 0;
+let flockGrid = null;
+let seededAnimation = null;
+let seededPlacement = null;
+let seededCount = -1;
+let seededOnce = false;
+
+// Deterministic 3D value noise: used for flow fields, gusts and drift.
+function hash3(ix, iy, iz){
+  let h = Math.imul(ix | 0, 374761393) ^ Math.imul(iy | 0, 668265263) ^ Math.imul(iz | 0, 1274126177);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967295;
+}
+const smoothStep = t => t * t * (3 - 2 * t);
+function noise3(x, y, z){
+  const ix = Math.floor(x), iy = Math.floor(y), iz = Math.floor(z);
+  const fx = smoothStep(x - ix), fy = smoothStep(y - iy), fz = smoothStep(z - iz);
+  const c000 = hash3(ix, iy, iz),         c100 = hash3(ix + 1, iy, iz);
+  const c010 = hash3(ix, iy + 1, iz),     c110 = hash3(ix + 1, iy + 1, iz);
+  const c001 = hash3(ix, iy, iz + 1),     c101 = hash3(ix + 1, iy, iz + 1);
+  const c011 = hash3(ix, iy + 1, iz + 1), c111 = hash3(ix + 1, iy + 1, iz + 1);
+  const x00 = c000 + (c100 - c000) * fx, x10 = c010 + (c110 - c010) * fx;
+  const x01 = c001 + (c101 - c001) * fx, x11 = c011 + (c111 - c011) * fx;
+  const y0 = x00 + (x10 - x00) * fy, y1 = x01 + (x11 - x01) * fy;
+  return y0 + (y1 - y0) * fz;
+}
+const noise3s = (x, y, z) => noise3(x, y, z) * 2 - 1;
+
+// Stable per-element pseudo-random in 0..1, so elements never re-randomise on redraw.
+const det01 = (seed, k) => hash3(Math.floor(seed * 997) + k * 131, 17 + k, 5);
+
+/* Curl of a scalar noise potential, so the field should be divergence-free and elements
+   should travel along streamlines instead of collecting in slow zones. Three details matter,
+   and all three were measured. The finite difference that reads the potential has to be small:
+   at a one-cell step the sampled field was 81% as divergent as it was strong, full of sinks,
+   which pulled elements into columns and points. At 0.15 of a cell it is about 2%, and the gain
+   below puts the magnitude back where it was so callers keep their tuning. The potential also
+   has to change faster than the field can focus: a steady plane flow always draws particles onto
+   one trajectory. And the eddy has to be small enough that there are several of them across the
+   frame, because a single broad eddy is the strongest focusing case there is. Measured spread of
+   a 40 element scene after 50s: 1px at a 625px eddy, 240px at 333px, 240px at 250px. */
+function flowAt(x, y, t){
+  const s = 3 / Math.min(W, H);     // eddies about a third of the frame across, at any output size
+  const nx = x * s, ny = y * s, nz = t * 0.3;
+  const e = 0.15;                   // small enough that the sampled field is near divergence-free
+  const gain = 2.7;                 // restores the magnitude lost to the smaller step
+  const dPdy = (noise3s(nx, ny + e, nz) - noise3s(nx, ny - e, nz)) * 0.5;
+  const dPdx = (noise3s(nx + e, ny, nz) - noise3s(nx - e, ny, nz)) * 0.5;
+  return { x: dPdy * 1.6 * gain, y: -dPdx * 1.6 * gain };
+}
+
+/* One shared field for every element. An earlier version sampled it from a per-element offset
+   to stop scenes converging on one attractor; that cost 6.5x the neighbour velocity agreement
+   (0.858 of the mean speed against 0.131) and is what made the motion read as disjointed. The
+   collapse was a field problem, not a sampling problem, and is fixed above, so the shared
+   field is both the more coherent and the more accurate reading. */
+
+// Off-screen margin for recycling and wrapping: large enough that a shape is fully outside
+// the frame before it is moved, and never so large that the off-screen band swallows the
+// frame. An oversized margin was what left the field scenes with almost nothing on screen.
+function shapeMargin(){
+  const hide = params.size * 0.75 + 40;
+  const limit = Math.min(W, H) * 0.25;
+  return Math.max(60, Math.min(hide, limit));
+}
+// Resting margin for solid edges: the shape sits against the edge rather than through it.
+function wallMargin(){ return Math.max(20, params.size * 0.6); }
+
+function makeElement(){
+  return {
+    spawned: false,
+    grow: 0,
+    seed: Math.random() * 1000,
+    phase: Math.random() * Math.PI * 2,
+    speedMul: 0.72 + Math.random() * 0.56,
+    sizeMul: 0.7 + Math.random() * 0.6,
+    spin: (Math.random() - 0.5) * 0.9,
+    x: 0, y: 0, vx: 0, vy: 0, rot: 0, breath: 1,
+    hx: 0, hy: 0, orbitR: 0
+  };
+}
+
+function layoutElement(el, i, n){
+  switch(params.placement){
+    case "vertical":
+      el.hx = W / 2;
+      el.hy = ((i + 0.5) / Math.max(1, n)) * H;
+      break;
+    case "horizontal":
+      el.hy = H / 2;
+      el.hx = ((i + 0.5) / Math.max(1, n)) * W;
+      break;
+    case "scatter":
+      el.hx = det01(el.seed, 11) * W;
+      el.hy = det01(el.seed, 13) * H;
+      break;
+    default:
+      // CLUSTER: a loose cluster around the centre, not a single point
+      el.hx = W / 2 + (det01(el.seed, 11) - 0.5) * W * 0.24;
+      el.hy = H / 2 + (det01(el.seed, 13) - 0.5) * H * 0.24;
+  }
+}
+
+function layoutElements(){
+  for(let i = 0; i < elements.length; i++) layoutElement(elements[i], i, elements.length);
+}
+
+function seedElement(el, i, n){
+  layoutElement(el, i, n);
+  const m = shapeMargin();
+  el.spawned = true;
+  el.grow = 0;
+  el.vx = 0; el.vy = 0; el.breath = 1;
+  el.rot = Math.random() * Math.PI * 2;
+
+  switch(params.animation){
+    case "rain":
+      // Spread across the visible band from the outset, so the field reads as
+      // continuous immediately instead of slowly filling in from above.
+      el.x = det01(el.seed, 3) * W;
+      el.y = -m + det01(el.seed, 5) * (H + 2 * m);
+      break;
+    case "wind":
+      el.x = -m + det01(el.seed, 3) * (W + 2 * m);
+      el.y = det01(el.seed, 5) * H;
+      break;
+    case "flow":
+    case "flock":
+      el.x = det01(el.seed, 3) * W;
+      el.y = det01(el.seed, 5) * H;
+      break;
+    case "orbit": {
+      // A ring for every element, spread evenly and then jittered, with the speed that makes
+      // that ring circular. Starting on a circular orbit means nothing has to settle in first.
+      const { rIn, rOut } = orbitBounds();
+      const even = (i + 0.5) / Math.max(1, n);
+      el.orbitR = rIn + (rOut - rIn) * (0.5 * even + 0.5 * det01(el.seed, 29));
+      const a = det01(el.seed, 31) * Math.PI * 2;
+      const soft = Math.max(80, params.size * 1.1);
+      const gm = (2.4e6 + params.speed * 4.7e6) * params.gravity;
+      const v = Math.sqrt(gm * el.orbitR / (el.orbitR * el.orbitR + soft * soft));
+      el.x = W * 0.5 + Math.cos(a) * el.orbitR;
+      el.y = H * 0.5 + Math.sin(a) * el.orbitR;
+      el.vx = -Math.sin(a) * v;
+      el.vy = Math.cos(a) * v;
+      el.rot = a + Math.PI * 0.5;
+      break;
+    }
+    case "bounce":
+      // Start at the home spot already moving sideways, so the scene does not
+      // degenerate into shapes hopping up and down in one place.
+      el.x = el.hx;
+      el.y = el.hy;
+      el.vx = (det01(el.seed, 17) - 0.5) * 300;
+      el.vy = -det01(el.seed, 19) * 120;
+      break;
+    default:
+      el.x = el.hx + (det01(el.seed, 7) - 0.5) * W * 0.3;
+      el.y = el.hy + (det01(el.seed, 9) - 0.5) * H * 0.3;
+  }
+}
+
+function syncElements(){
+  const n = Math.max(0, Math.floor(params.count));
+
+  if(elements.length > n) elements.length = n;
+  while(elements.length < n) elements.push(makeElement());
+
+  const modeChanged = params.animation !== seededAnimation;
+  const placeChanged = params.placement !== seededPlacement;
+  const countChanged = n !== seededCount;
+  const moving = seededOnce && (modeChanged || placeChanged);
+  seededAnimation = params.animation;
+  seededPlacement = params.placement;
+  seededCount = n;
+  seededOnce = true;
+
+  if(modeChanged || placeChanged || countChanged) layoutElements();
+
+  // Only elements that have never been placed need a position. Everything else keeps
+  // where it is, so a change of scene settles into the new behaviour instead of cutting
+  // to a fresh arrangement.
+  for(let i = 0; i < elements.length; i++){
+    if(!elements[i].spawned) seedElement(elements[i], i, elements.length);
+  }
+
+  if(moving){
+    const maxCarry = 420;      // px/s: enough to glide in, not enough to blur
+    for(const el of elements){
+      // Carry part of the old momentum in, damp the rest, and scatter a little so that
+      // clumped arrangements break apart as the new scene takes hold.
+      el.vx = el.vx * 0.4 + (det01(el.seed, 51) - 0.5) * 170;
+      el.vy = el.vy * 0.4 + (det01(el.seed, 53) - 0.5) * 170;
+      const v = Math.hypot(el.vx, el.vy);
+      if(v > maxCarry){ el.vx = el.vx / v * maxCarry; el.vy = el.vy / v * maxCarry; }
+    }
+  }
+}
+
+function lerpAngle(a, b, t){
+  const d = ((b - a + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+  return a + d * t;
+}
+
+function wrapX(el, m){
+  const span = W + 2 * m;
+  if(el.x < -m) el.x += span;
+  else if(el.x > W + m) el.x -= span;
+}
+function wrapY(el, m){
+  const span = H + 2 * m;
+  if(el.y < -m) el.y += span;
+  else if(el.y > H + m) el.y -= span;
+}
+function edgeSteer(pos, size, m){
+  if(pos < m) return m - pos;
+  if(pos > size - m) return size - m - pos;
+  return 0;
+}
+
+function buildFlockGrid(perception){
+  const cell = Math.max(60, perception);
+  const cols = Math.max(1, Math.ceil(W / cell));
+  const rows = Math.max(1, Math.ceil(H / cell));
+  const buckets = new Array(cols * rows);
+  for(let i = 0; i < buckets.length; i++) buckets[i] = [];
+  for(let i = 0; i < elements.length; i++){
+    const el = elements[i];
+    const cx = Math.min(cols - 1, Math.max(0, Math.floor(el.x / cell)));
+    const cy = Math.min(rows - 1, Math.max(0, Math.floor(el.y / cell)));
+    buckets[cy * cols + cx].push(i);
+  }
+  flockGrid = { cell, cols, rows, buckets };
+}
+
+function stepElements(dt, S, t){
+  const m = shapeMargin();
+  const turb = params.turbulence;
+  const impulse = beatImpulse;
+  beatImpulse = 0;
+
+  // Flocking is the only mode with neighbour queries, so bucket once per frame
+  // instead of comparing every element against every other element.
+  if(params.animation === "flock") buildFlockGrid(Math.max(90, params.size * 1.4));
+
+  for(let i = 0; i < elements.length; i++){
+    const el = elements[i];
+    el.breath = 1;
+    el.grow = Math.min(1, el.grow + dt * 2.2);
+    switch(params.animation){
+      case "rain":  stepRain(el, dt, S, m, t, turb, impulse); break;
+      case "wind":  stepWind(el, dt, S, m, t, turb, impulse); break;
+      case "wave":  stepWave(el, dt, S, m, t, impulse); break;
+      case "flow":  stepFlow(el, dt, S, m, t, turb, impulse); break;
+      case "flock": stepFlock(el, i, dt, S, m, t, turb, impulse); break;
+      case "orbit": stepOrbit(el, dt, S, m, t, turb, impulse); break;
+      case "pulse": stepPulse(el, dt, S, t, impulse); break;
+      default:      stepBounce(el, dt, S, impulse);
+    }
+  }
+
+  keepViewportPopulated(dt);
+}
+
+// Put an off-screen element back where it can be seen. Only ever called for elements that
+// are entirely outside the frame, so the move itself is invisible. Falling scenes re-enter
+// part way down rather than above the frame, so the shape is on screen the moment it lands.
+function reenterElement(el){
+  const jx = det01(el.seed, 61), jy = det01(el.seed, 63);
+  switch(params.animation){
+    case "rain":
+      el.x = (0.08 + 0.84 * jx) * W;
+      el.y = (0.02 + 0.48 * jy) * H;
+      break;
+    case "orbit": {
+      const a = det01(el.seed, 61) * Math.PI * 2;
+      const rr = el.orbitR || Math.min(W, H) * 0.3;
+      el.x = W * 0.5 + Math.cos(a) * rr;
+      el.y = H * 0.5 + Math.sin(a) * rr;
+      break;
+    }
+    case "bounce":
+      el.x = (0.12 + 0.76 * jx) * W;
+      el.y = el.hy;
+      el.vy = -180;
+      break;
+    case "wave":
+    case "pulse":
+      // These two hold to a home spot, so drop the element near it and let the spring work.
+      el.x = el.hx + (det01(el.seed, 65) - 0.5) * W * 0.1;
+      el.y = el.hy + (det01(el.seed, 67) - 0.5) * H * 0.1;
+      break;
+    default:
+      el.x = (0.08 + 0.84 * jx) * W;
+      el.y = (0.15 + 0.70 * jy) * H;
+  }
+}
+
+/* The physics cannot promise that a scene keeps something on screen: drops can bunch into
+   one phase band, and a strong field can hold elements just past an edge. Both are visible
+   as an empty frame. So the count of shapes actually on screen is checked every frame, and
+   when it falls below half the requested count the off-screen ones are re-entered. Because
+   only invisible elements are moved, the correction cannot be seen. */
+let occupancyHold = 0;
+function keepViewportPopulated(dt){
+  const n = elements.length;
+  if(!n) return;
+  // Two different measures, because they answer two different questions.
+  // "Present" counts a shape whose body straddles an edge, so the check fires when the frame
+  // is genuinely thin rather than when centres happen to be just outside it.
+  const near = params.size * 0.3;
+  let visible = 0;
+  for(let i = 0; i < n; i++){
+    const el = elements[i];
+    if(el.x > -near && el.x < W + near && el.y > -near && el.y < H + near) visible++;
+  }
+  const want = Math.max(1, Math.round(n * 0.5));
+  if(visible >= want){ occupancyHold = 0; return; }
+  // A thin frame waits a moment, so a scene that is still settling in is not fought. A frame
+  // with nothing on it at all is corrected straight away, because there is nothing to disturb.
+  if(visible > 0){
+    occupancyHold += dt;
+    if(occupancyHold < 0.2) return;
+  }
+  occupancyHold = 0;
+  // "Hidden" is the stricter test: the widest shape reaches about 0.55 * size * sizeMul from
+  // its centre, so anything past that pad has none of itself on screen and can be moved
+  // without the move being seen. If too few shapes are that far out, the frame is left alone.
+  let need = want - visible;
+  for(let i = 0; i < n && need > 0; i++){
+    const el = elements[i];
+    const p = params.size * el.sizeMul * 0.65;
+    const hidden = el.x <= -p || el.x >= W + p || el.y <= -p || el.y >= H + p;
+    if(!hidden) continue;
+    reenterElement(el);
+    need--;
+  }
+}
+
+function stepRain(el, dt, S, m, t, turb, impulse){
+  const terminal = (150 + S * 34) * el.speedMul * params.gravity;
+  el.vy += (terminal - el.vy) * Math.min(1, dt * 3.2 * params.drag);
+  const c = flowAt(el.x, el.y, t * 0.6);
+  el.vx += (c.x * 70 * turb - el.vx) * Math.min(1, dt * 1.6 * params.drag);
+  if(impulse) el.vy += impulse * 180 * el.speedMul;
+  el.x += el.vx * dt;
+  el.y += el.vy * dt;
+  el.rot += el.spin * dt * 0.6;
+  wrapX(el, m);
+  wrapY(el, m);
+}
+
+function stepWind(el, dt, S, m, t, turb, impulse){
+  const gust = 0.5 + 0.5 * noise3(el.seed * 0.01 + 3, 4, t * 0.1);
+  const target = (120 + S * 26) * gust * el.speedMul;
+  el.vx += (target - el.vx) * Math.min(1, dt * 1.3 * params.drag);
+  const c = flowAt(el.x, el.y, t);
+  el.vy += (c.y * 170 * turb - el.vy) * Math.min(1, dt * 1.5 * params.drag);
+  if(impulse){ el.vx += impulse * 150; el.vy -= impulse * 70; }
+  // Blowing across, so wrap in x but keep the y band inside the frame. Wrapping both axes
+  // pushed most of the elements off-screen and left the viewport nearly empty.
+  const em = Math.max(60, Math.min(W, H) * 0.12);
+  el.vy += edgeSteer(el.y, H, em) * 3.0 * dt;
+  el.x += el.vx * dt;
+  el.y += el.vy * dt;
+  el.rot += el.spin * dt * (0.4 + Math.abs(el.vy) * 0.002);
+  wrapX(el, m);
+}
+
+function stepWave(el, dt, S, m, t, impulse){
+  const vertical = params.placement !== "horizontal";
+  const axis = vertical ? el.hy : el.hx;
+  const k = 0.006 + 0.0004 * S;
+  const travel = 1.4 + S * 0.14;
+  const amp = (vertical ? H : W) * 0.11 * (0.5 + 0.5 * noise3(el.seed * 0.01 + 7, t * 0.15, 2));
+  const offset = Math.sin(axis * k - t * travel + el.phase * 0.4) * amp;
+  const tgtX = vertical ? el.hx + offset * 0.3 : el.hx;
+  const tgtY = vertical ? el.hy : el.hy + offset;
+  const stiff = 20 * params.cohesion, damp = 3.8 * params.drag;
+  el.vx += (tgtX - el.x) * stiff * dt - el.vx * damp * dt;
+  el.vy += (tgtY - el.y) * stiff * dt - el.vy * damp * dt;
+  if(impulse) el.vy -= impulse * 120;
+  // A long way from home would otherwise mean a blur on the way in.
+  const v = Math.hypot(el.vx, el.vy), vcap = 900;
+  if(v > vcap){ el.vx = el.vx / v * vcap; el.vy = el.vy / v * vcap; }
+  el.x += el.vx * dt;
+  el.y += el.vy * dt;
+  el.rot = lerpAngle(el.rot, el.vx * 0.0012 + el.vy * 0.0006, Math.min(1, dt * 6));
+}
+
+function stepFlow(el, dt, S, m, t, turb, impulse){
+  const c = flowAt(el.x, el.y, t);
+  const mag = (110 + S * 16) * turb;
+  // Containment rather than wrapping. The field is divergence-free on the plane, but
+  // wrapping samples it across a seam that is not periodic, which made elements pile up
+  // against the wrap boundary and slide out of the frame. The wall is folded into the
+  // target velocity rather than added on afterwards: added on afterwards it was weaker
+  // than the field, so elements came to rest just outside the frame and stayed there.
+  const em = Math.max(70, Math.min(W, H) * 0.14);
+  const gx = edgeSteer(el.x, W, em), gy = edgeSteer(el.y, H, em);
+  const k = Math.min(1, dt * 1.1 * params.drag);
+  el.vx += (c.x * mag * 1.7 + gx * 26 - el.vx) * k;
+  el.vy += (c.y * mag * 1.7 + gy * 26 - el.vy) * k;
+  if(impulse){ el.vx += impulse * 130; el.vy -= impulse * 130; }
+  el.x += el.vx * dt;
+  el.y += el.vy * dt;
+  el.rot += el.spin * dt * 0.3 + (el.vx + el.vy) * 0.00008 * dt * 60;
+}
+
+/* Ring bounds for the orbit scene: inside the frame, and never so tight that the shape itself
+   would swallow the ring. rIn can exceed rOut once the shapes get large, so it is capped. */
+function orbitBounds(){
+  const rOut = Math.min(W, H) * 0.44;
+  return { rOut, rIn: Math.min(rOut, Math.max(60, params.size * 0.9)) };
+}
+
+/* A central pull, inverse-square and softened at the core, so the elements circle the middle of
+   the frame and each shape turns to face the way it travels. Gravity alone decays every orbit
+   into the core, so an element also holds the radius it was seeded on. Speed and Gravity set the
+   pace of the system, Cohesion sets how firmly the rings are held, Turbulence sets how much the
+   paths wander, and Drag sets how quickly they settle. */
+function stepOrbit(el, dt, S, m, t, turb, impulse){
+  const dx = W * 0.5 - el.x, dy = H * 0.5 - el.y;
+  const r = Math.hypot(dx, dy) || 1;
+  const { rIn, rOut } = orbitBounds();
+  if(!el.orbitR) el.orbitR = Math.min(rOut, Math.max(rIn, r));
+  el.orbitR = Math.min(rOut, Math.max(rIn, el.orbitR));   // survive resizes and size changes
+
+  const soft = Math.max(80, params.size * 1.1);
+  const gm = (2.4e6 + S * 4.7e6) * params.gravity;
+  const ux = dx / r, uy = dy / r;                          // unit vector towards the centre
+  const pull = gm / (r * r + soft * soft);                 // inward acceleration
+  const err = (r - el.orbitR) / Math.max(60, el.orbitR * 0.3);
+  const accelIn = pull + err * (200 + 200 * turb) * params.cohesion;
+  const accelRound = Math.sin(t * 0.23 + el.phase) * 60 * turb;
+
+  el.vx += (ux * accelIn + uy * accelRound) * dt;
+  el.vy += (uy * accelIn - ux * accelRound) * dt;
+
+  // Split the velocity and correct the two parts differently. Radial motion is damped away, so
+  // each ring settles. Tangential speed is drawn towards the circular speed for this radius,
+  // which is what lets Speed and Gravity set the pace. Damping the whole velocity instead eats
+  // the orbital energy, and measurement showed every element spiralling into the core. The
+  // tangential direction is (uy, -ux); using its negative reverses the correction and fights
+  // the orbit, which is what an earlier version did.
+  const vr = el.vx * ux + el.vy * uy;
+  const vt = el.vx * uy - el.vy * ux;
+  const vCirc = Math.sqrt(gm * r / (r * r + soft * soft));
+  const radial = vr * Math.max(0, 1 - dt * 1.6 * params.drag);
+  const round = vt + (vCirc - vt) * Math.min(1, dt * 1.2 * params.drag);
+  el.vx = ux * radial + uy * round;
+  el.vy = uy * radial - ux * round;
+
+  if(impulse){ el.vx -= ux * impulse * 260; el.vy -= uy * impulse * 260; }
+
+  el.x += el.vx * dt;
+  el.y += el.vy * dt;
+  el.rot = lerpAngle(el.rot, Math.atan2(el.vy, el.vx), Math.min(1, dt * 4));
+}
+
+function stepPulse(el, dt, S, t, impulse){
+  const stiff = (24 + 24 * det01(el.seed, 21)) * params.cohesion;
+  const damp = 3.4 * params.drag;
+  el.vx += (el.hx - el.x) * stiff * dt - el.vx * damp * dt;
+  el.vy += (el.hy - el.y) * stiff * dt - el.vy * damp * dt;
+  if(impulse){
+    const dx = el.x - el.hx, dy = el.y - el.hy;
+    const len = Math.hypot(dx, dy) || 1;
+    el.vx += (dx / len) * impulse * 260;
+    el.vy += (dy / len) * impulse * 260;
+  }
+  // A long way from home would otherwise mean a blur on the way in.
+  const v = Math.hypot(el.vx, el.vy), vcap = 900;
+  if(v > vcap){ el.vx = el.vx / v * vcap; el.vy = el.vy / v * vcap; }
+  el.x += el.vx * dt;
+  el.y += el.vy * dt;
+  el.breath = 0.82 + 0.28 * Math.sin(t * (1.1 + S * 0.05) + el.phase);
+  el.rot += el.spin * dt * 0.4;
+}
+
+function stepBounce(el, dt, S, impulse){
+  const m = wallMargin();
+  const g = (620 + S * 55) * params.gravity;
+  el.vy += g * dt;
+  if(params.placement === "normal") el.vx += (el.hx - el.x) * 0.5 * dt;
+  el.vx -= el.vx * 0.1 * params.drag * dt;
+  if(impulse) el.vy -= impulse * 380;
+  el.x += el.vx * dt;
+  el.y += el.vy * dt;
+
+  const floor = H - m;
+  if(el.y > floor){
+    // Reverse velocity in place instead of snapping the position onto the floor line.
+    // Snapping teleported any element that arrived already inside the wall margin, which
+    // is exactly what switching into this scene does. Restitution alone also loses energy
+    // every bounce, so this puts a floor under the rebound speed, sized from a target
+    // bounce height, so gravity changes the rhythm rather than ending the bounce.
+    const targetHeight = H * (0.18 + det01(el.seed, 31) * 0.34);
+    const minRebound = params.gravity > 0.01 ? Math.sqrt(2 * g * targetHeight) : 0;
+    el.vy = -Math.max(Math.abs(el.vy) * 0.72, minRebound);
+    el.vx *= 0.94;
+    // If the shape has lost its sideways drift, nudge it back toward the middle.
+    if(Math.abs(el.vx) < 50) el.vx += (W / 2 - el.x) > 0 ? 70 : -70;
+  }
+  else if(el.y < m && el.vy < 0){ el.vy = Math.abs(el.vy) * 0.6; }
+  if(el.x < m && el.vx < 0) el.vx = Math.abs(el.vx) * 0.7;
+  else if(el.x > W - m && el.vx > 0) el.vx = -Math.abs(el.vx) * 0.7;
+
+  // Soft pull for anything left outside the walls, so nothing can sit off-screen.
+  if(el.x < m) el.vx += (m - el.x) * 3 * dt;
+  else if(el.x > W - m) el.vx += (W - m - el.x) * 3 * dt;
+  if(el.y < m) el.vy += (m - el.y) * 3 * dt;
+
+  el.rot += el.spin * dt * (0.5 + Math.abs(el.vy) * 0.0012);
+}
+
+function stepFlock(el, i, dt, S, m, t, turb, impulse){
+  const perception = Math.max(90, params.size * 1.4);
+  const perception2 = perception * perception;
+  const sepR2 = (perception * 0.5) * (perception * 0.5);
+
+  let sepX = 0, sepY = 0, nSep = 0;
+  let aliX = 0, aliY = 0, nAli = 0;
+  let cohX = 0, cohY = 0, nCoh = 0;
+
+  const g = flockGrid;
+  if(g){
+    const cx = Math.min(g.cols - 1, Math.max(0, Math.floor(el.x / g.cell)));
+    const cy = Math.min(g.rows - 1, Math.max(0, Math.floor(el.y / g.cell)));
+    for(let gy = Math.max(0, cy - 1); gy <= Math.min(g.rows - 1, cy + 1); gy++){
+      for(let gx = Math.max(0, cx - 1); gx <= Math.min(g.cols - 1, cx + 1); gx++){
+        const bucket = g.buckets[gy * g.cols + gx];
+        for(let b = 0; b < bucket.length; b++){
+          const j = bucket[b];
+          if(j === i) continue;
+          const o = elements[j];
+          const dx = o.x - el.x, dy = o.y - el.y;
+          const d2 = dx * dx + dy * dy;
+          if(d2 > perception2) continue;
+          const d = Math.sqrt(d2) || 0.001;
+          if(d2 < sepR2){ sepX -= dx / d; sepY -= dy / d; nSep++; }
+          aliX += o.vx; aliY += o.vy; nAli++;
+          cohX += o.x; cohY += o.y; nCoh++;
+        }
+      }
+    }
+  }
+
+  let ax = 0, ay = 0;
+  if(nSep){ ax += (sepX / nSep) * 300; ay += (sepY / nSep) * 300; }
+  if(nAli){ ax += ((aliX / nAli) - el.vx) * 1.4; ay += ((aliY / nAli) - el.vy) * 1.4; }
+  if(nCoh){
+    ax += ((cohX / nCoh) - el.x) * 0.9 * params.cohesion;
+    ay += ((cohY / nCoh) - el.y) * 0.9 * params.cohesion;
+  }
+
+  // A slowly roaming attractor keeps the flock together as one travelling mass. It is
+  // scaled by Cohesion too, so that at zero the elements stop gathering at all.
+  const roamX = W * (0.5 + 0.3 * noise3(t * 0.06, 11, 3));
+  const roamY = H * (0.5 + 0.3 * noise3(t * 0.06, 23, 7));
+  ax += (roamX - el.x) * 0.4 * params.cohesion;
+  ay += (roamY - el.y) * 0.4 * params.cohesion;
+
+  const c = flowAt(el.x, el.y, t * 1.3);
+  ax += c.x * 90 * turb;
+  ay += c.y * 90 * turb;
+
+  // Soft containment over a wide band, so nothing wanders out of frame.
+  const em = Math.max(80, Math.min(W, H) * 0.15);
+  ax += edgeSteer(el.x, W, em) * 2.4;
+  ay += edgeSteer(el.y, H, em) * 2.4;
+  el.vx -= el.vx * 0.6 * params.drag * dt;
+  el.vy -= el.vy * 0.6 * params.drag * dt;
+
+  if(impulse){
+    ax += impulse * 260 * (det01(el.seed, 41) - 0.5);
+    ay += impulse * 260 * (det01(el.seed, 43) - 0.5);
+  }
+
+  el.vx += ax * dt;
+  el.vy += ay * dt;
+
+  const maxV = (130 + S * 18) * el.speedMul;
+  const v = Math.hypot(el.vx, el.vy);
+  if(v > maxV){ el.vx = (el.vx / v) * maxV; el.vy = (el.vy / v) * maxV; }
+
+  el.x += el.vx * dt;
+  el.y += el.vy * dt;
+  el.rot = lerpAngle(el.rot, Math.atan2(el.vy, el.vx) + Math.PI / 2, Math.min(1, dt * 3));
+}
+
 const statusOverlay = document.getElementById("statusOverlay");
-function setStatusMessage(message, warn = false){
+let statusTimer = null;
+function setStatusMessage(message, warn = false, autoHideSeconds = 0){
+  if(statusTimer){ clearTimeout(statusTimer); statusTimer = null; }
   if(!message){
     statusOverlay.style.display = "none";
     statusOverlay.textContent = "";
@@ -86,6 +817,9 @@ function setStatusMessage(message, warn = false){
   statusOverlay.textContent = message;
   statusOverlay.style.display = "block";
   statusOverlay.classList.toggle("warn", warn);
+  if(autoHideSeconds > 0){
+    statusTimer = setTimeout(() => { statusTimer = null; setStatusMessage(""); }, autoHideSeconds * 1000);
+  }
 }
 
 async function initCamera(type){
@@ -99,8 +833,9 @@ async function initCamera(type){
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
     let target = devices.find(d=>d.kind==="videoinput");
-    if(type==="macbookCam") target = devices.find(d=>/FaceTime/i.test(d.label)) || target;
-    if(type==="usbCam") target = devices.find(d=>/USB/i.test(d.label)) || target;
+    // Any webcam is fine. Where a built-in camera is labelled, prefer it when several
+    // cameras are exposed; the plain first match is the fallback for everything else.
+    if(type==="camera") target = devices.find(d=>/FaceTime|Built-?in|Integrated/i.test(d.label)) || target;
     if(!target){
       setStatusMessage("No camera found. Reverting to colour background.", true);
       params.bgSource = "color";
@@ -111,7 +846,11 @@ async function initCamera(type){
     videoBg.srcObject = cameraStream;
     await videoBg.play();
     videoBg.style.display="block";
-    setStatusMessage("Camera source enabled. Allow access if prompted.", false);
+    // Name what was actually opened, then let the message fade so it does not sit on
+    // top of the output on a projector.
+    const track = cameraStream.getVideoTracks()[0];
+    const deviceName = (track && track.label) || target.label || "unknown device";
+    setStatusMessage("Camera source: " + deviceName, false, 6);
   } catch(e){
     console.warn("Camera error", e);
     setStatusMessage("Camera access denied or unavailable. Reverting to colour background.", true);
@@ -189,7 +928,7 @@ function drawGrid(){
   ctx.restore();
 }
 
-function updateAudio() {
+function updateAudio(dt) {
   if (!params.micSyncEnabled || !analyser) {
     params.beatLevel = 0;
     beatPulse = 0;
@@ -199,45 +938,76 @@ function updateAudio() {
   analyser.getByteFrequencyData(audioData);
 
   let bass = 0;
-  for (let i = 1; i <= 6; i++) bass += audioData[i];
-  bass /= 6;
+  for (let i = 1; i <= 4; i++) bass += audioData[i];
+  bass /= 4;
 
-  let mid = 0;
-  for (let i = 8; i <= 20; i++) mid += audioData[i];
-  mid /= 13;
+  let lowMid = 0;
+  for (let i = 5; i <= 8; i++) lowMid += audioData[i];
+  lowMid /= 4;
 
   const sensitivity = Math.max(0.2, Math.min(1, params.micSensitivity || 0.5));
   const currentBass = bass / 255;
-  const currentMid = mid / 255;
+  const currentLowMid = lowMid / 255;
 
-  bassLevel = bassLevel * 0.72 + currentBass * 0.28;
+  bassLevel = bassLevel * 0.8 + currentBass * 0.2;
 
-  const beatThreshold = 0.60 - (sensitivity - 0.5) * 0.10;
-  const transientFactor = 1.95 - (sensitivity - 0.5) * 0.18;
+  const beatThreshold = 0.62 - (sensitivity - 0.5) * 0.12;
+  const transientFactor = 1.8 - (sensitivity - 0.5) * 0.16;
   const now = Date.now();
-  const isBassHit = currentBass > beatThreshold && currentBass > currentMid * 1.25;
+  const isBassHit = currentBass > beatThreshold && currentBass > currentLowMid * 1.3;
   const isTransient = currentBass > bassLevel * transientFactor;
-  const strongBeat = isBassHit && isTransient && currentMid < 0.6 && (now - lastBeatTime > 200);
+  const strongBeat = isBassHit && isTransient && currentLowMid < 0.7 && (now - lastBeatTime > 220);
 
   if (strongBeat) {
-    beatPulse = 1.4 + Math.min(1.2, currentBass * 1.6);
+    beatPulse = 1.25 + Math.min(1.0, currentBass * 1.3);
     lastBeatTime = now;
+    beatImpulse = Math.min(2.2, 0.9 + currentBass * 1.4);
     if (typeof window.showBeat === "function") window.showBeat();
   }
 
-  beatPulse *= 0.58;
-  params.beatLevel = Math.max(bassLevel * 2.0, beatPulse * 1.2);
-  params.energy = bassLevel;
+  beatPulse *= Math.exp(-6 * dt);
+  const beatEnergy = Math.max(0, currentBass - Math.max(0.1, bassLevel * 0.75));
+  params.beatLevel = Math.max(0.05, Math.max(beatPulse * 0.95, beatEnergy * 2.2));
+  params.energy = currentBass;
 }
 
 function getReactiveScale() {
   return 1.0 + params.beatLevel * 1.65;
 }
 
+/* Loose particle fill for one shape. A jittered grid of dots is drawn while the shape's
+   outline is the clip region, so the dots inherit the fill colour, gradient and alpha, and
+   they only appear where the shape is. Nothing needs hit testing, and the formation is
+   stable per element because the jitter comes from a hash rather than Math.random(). */
+function particleFill(size, index){
+  const R = size * 0.7;
+  // Fine grain: a tight grid of small dots. The grid is held at 13 cells across the shape's
+  // box, so the grain size scales with the shape while the dot count per shape stays
+  // predictable. Raise FINENESS for even smaller, denser grain.
+  const FINENESS = 13;
+  const step = Math.max(3, (2 * R) / FINENESS);
+  const rBase = Math.max(0.8, step * 0.34);
+  const dots = new Path2D();
+  let cell = 0;
+  for(let gy = -R; gy <= R; gy += step){
+    for(let gx = -R; gx <= R; gx += step){
+      cell++;
+      const seed = index * 131 + cell * 7;
+      const px = gx + (detRandom(seed) - 0.5) * step * 0.95;
+      const py = gy + (detRandom(seed + 1) - 0.5) * step * 0.95;
+      const r = rBase * (0.45 + detRandom(seed + 2) * 0.8);
+      dots.moveTo(px + r, py);
+      dots.arc(px, py, r, 0, Math.PI * 2);
+    }
+  }
+  ctx.fill(dots);
+}
+
 function drawShapeVisual(size, index){
   const currentShape = shapeTypes[Math.floor(params.shapes)];
   if(currentShape === "none") return;
 
+  const useParticles = params.postFX.includes("particles");
   const react = getReactiveScale();
   const flash = params.beatLevel > 1.1 ? (params.beatLevel - 1.1) * 0.9 : 0;
 
@@ -283,7 +1053,14 @@ function drawShapeVisual(size, index){
   }
 
   shapePath(currentShape, size * react, index);
-  ctx.fill();
+  if(useParticles){
+    ctx.save();
+    ctx.clip();
+    particleFill(size * react, index);
+    ctx.restore();
+  } else {
+    ctx.fill();
+  }
   if(params.strokeEnabled) ctx.stroke();
 
   if (flash > 0.4) {
@@ -291,13 +1068,137 @@ function drawShapeVisual(size, index){
     ctx.globalAlpha = flash * 0.55;
     ctx.fillStyle = "#ffffcc";
     shapePath(currentShape, size * react * 0.9, index);
-    ctx.fill();
+    if(useParticles){ ctx.clip(); particleFill(size * react * 0.9, index); }
+    else ctx.fill();
     ctx.restore();
   }
 }
 
+// 4x4 ordered dither matrix, the pattern family Windows 95 used to fake extra greys.
+const BAYER4 = [
+   0,  8,  2, 10,
+  12,  4, 14,  6,
+   3, 11,  1,  9,
+  15,  7, 13,  5
+];
+
+/* Ordered dithering of the HSV value into four steps. Scaling by the brightest channel
+   leaves hue and saturation alone, so a gradient becomes a coloured stipple rather than
+   a black and white one. */
+function applyDither(d, fw, fh){
+  const levels = 4;
+  const step = 255 / (levels - 1);
+  for(let y = 0; y < fh; y++){
+    const row = (y & 3) * 4;
+    for(let x = 0; x < fw; x++){
+      const i = (y * fw + x) * 4;
+      const maxc = Math.max(d[i], d[i+1], d[i+2]);
+      const offset = (BAYER4[row + (x & 3)] + 0.5) / 16 - 0.5;
+      const level = Math.min(levels - 1, Math.max(0, Math.round(maxc / step + offset)));
+      const scale = maxc > 1 ? (level * step) / maxc : 0;
+      d[i]   = d[i] * scale;
+      d[i+1] = d[i+1] * scale;
+      d[i+2] = d[i+2] * scale;
+    }
+  }
+}
+
+/* Hue of an rgb triple as a 0..1 fraction, the same convention hslToRgb takes. */
+function rgbHue(c){
+  const r = c[0] / 255, g = c[1] / 255, b = c[2] / 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+  if(d < 0.0001) return 0;
+  let h;
+  if(mx === r) h = ((g - b) / d) % 6;
+  else if(mx === g) h = (b - r) / d + 2;
+  else h = (r - g) / d + 4;
+  return (((h / 6) % 1) + 1) % 1;
+}
+
+/* Four flat inks for the posterise effect: a screenprint rather than a quantised photograph. The
+   frame's luminance is cut into bands and each band is laid down as one flat colour, which is the
+   reading that makes it a print instead of a shaded photo. The inks are built from the palette's
+   own hue and rotated around the wheel, so the bands belong to the scene while still reading as
+   printed areas. A palette with no colour in it has no hue to rotate, so it falls back to a fixed
+   set, which is the louder look of the two. */
+function posteriseInks(){
+  const a = parseColour(params.shapeColor1) || [0, 0, 0];
+  const b = parseColour(params.shapeColor2) || [255, 255, 255];
+  const saturation = c => {
+    const mx = Math.max(c[0], c[1], c[2]), mn = Math.min(c[0], c[1], c[2]);
+    return mx > 0 ? (mx - mn) / mx : 0;
+  };
+  if(Math.max(saturation(a), saturation(b)) < 0.25){
+    return [[18, 16, 22], [232, 0, 128], [255, 214, 0], [0, 148, 214]];
+  }
+  const h = rgbHue(a);
+  return [
+    hslToRgb(h, 0.85, 0.14),
+    hslToRgb(h, 0.95, 0.45),
+    hslToRgb(h + 0.33, 0.95, 0.58),
+    hslToRgb(h + 0.66, 0.90, 0.78)
+  ];
+}
+
+/* The frame's own 2nd and 98th percentile luminance, sampled every twelfth pixel. Both banding
+   effects below need this: reading their cut from the tones that are actually present keeps them
+   legible whatever the palette is, where a fixed cut puts one hard edge across a gradient and can
+   tip a flat frame entirely to one side. */
+function luminanceRange(d){
+  const histogram = new Uint32Array(256);
+  let sampled = 0;
+  for(let i = 0; i < d.length; i += 4 * 12){
+    histogram[Math.round(d[i] * 0.299 + d[i+1] * 0.587 + d[i+2] * 0.114)]++;
+    sampled++;
+  }
+  const low = sampled * 0.02, high = sampled * 0.98;
+  let acc = 0, p2 = 0, p98 = 255;
+  for(let v = 0; v < 256; v++){
+    acc += histogram[v];
+    if(acc < low) p2 = v;
+    if(acc < high) p98 = v;
+  }
+  return { p2, p98 };
+}
+
+const PIXEL_FX = ["threshold", "posterize", "dither", "duotone", "pixelate", "crt", "glitch", "feedback"];
+
+// Every pass below reads the whole canvas back, so skip them entirely when nothing
+// pixel-based is selected.
+function needsPixelPass(){
+  return params.invertColors || params.postFX.some(f => PIXEL_FX.includes(f));
+}
+
+/* These effects run on a buffer at logical resolution, not at the device-pixel
+   resolution: the per-pixel loops are the expensive part, and they are lo-fi effects,
+   so paying for them at 1x and scaling the result back up is a good trade. It also
+   keeps their cost independent of devicePixelRatio. Drop FX_SCALE to 0.5 for four
+   times the speed at a softer result. */
+const FX_SCALE = 1;
+let fxCanvas = null;
+let fxc = null;
+
 function applyPostFX(){
-  let image = ctx.getImageData(0,0,W,H);
+  const fw = Math.max(1, Math.round(W * FX_SCALE));
+  const fh = Math.max(1, Math.round(H * FX_SCALE));
+
+  if(!fxCanvas){
+    fxCanvas = document.createElement("canvas");
+    fxc = fxCanvas.getContext("2d");
+  }
+  if(fxCanvas.width !== fw || fxCanvas.height !== fh){
+    fxCanvas.width = fw;
+    fxCanvas.height = fh;
+    params.fxBuffers = {};
+  }
+
+  fxc.setTransform(1, 0, 0, 1, 0, 0);
+  fxc.globalAlpha = 1;
+  fxc.globalCompositeOperation = "source-over";
+  fxc.clearRect(0, 0, fw, fh);
+  fxc.drawImage(canvas, 0, 0, fw, fh);
+
+  const image = fxc.getImageData(0, 0, fw, fh);
   const d = image.data;
   const intensity = params.beatLevel || 0;
 
@@ -305,45 +1206,82 @@ function applyPostFX(){
     for(let i=0;i<d.length;i+=4){ d[i]=255-d[i]; d[i+1]=255-d[i+1]; d[i+2]=255-d[i+2]; }
   }
 
+  // Dither runs before threshold, so choosing both gives threshold bands with a stippled
+  // edge instead of one clean line.
+  if(params.postFX.includes("dither")) applyDither(d, fw, fh);
+
   if(params.postFX.includes("threshold")){
-    const avg = d.reduce((sum, val, idx) => idx % 4 === 0 ? sum + (d[idx] + d[idx+1] + d[idx+2]) / 3 : sum, 0) / (d.length / 4);
-    const t = Math.min(180, Math.max(96, 120 + intensity * 18 - (avg - 128) * 0.15));
+    // Black and white only: every pixel goes to one end or the other, with nothing in between.
+    // The cut sits between the frame's own two ends of the range, at the midpoint of its 2nd and
+    // 98th percentiles, so flat black and white is not tipped all one way and a palette of any
+    // brightness still separates. A beat lowers the cut, which pushes the frame toward white.
+    const { p2, p98 } = luminanceRange(d);
+    const cut = Math.max(30, Math.min(225, (p2 + p98) / 2 - intensity * 30));
     for(let i=0;i<d.length;i+=4){
-      const v = (d[i] + d[i+1] + d[i+2]) / 3;
-      const c = v > t ? 255 : (v > t * 0.7 ? 128 : 24);
-      d[i] = d[i+1] = d[i+2] = c;
+      const v = (d[i] * 0.299 + d[i+1] * 0.587 + d[i+2] * 0.114) > cut ? 255 : 0;
+      d[i] = v; d[i+1] = v; d[i+2] = v;
     }
   }
 
   if(params.postFX.includes("posterize")){
-    const levels = 5;
+    // Luminance is stretched to the frame's own range before it is banded, so the tones that are
+    // actually in the frame take the whole set of inks. Without that stretch a dark palette puts
+    // every tone in the two dark bands and the print reads as a muddy version of the original.
+    const inks = posteriseInks();
+    const { p2, p98 } = luminanceRange(d);
+    const span = p98 - p2;
+    const stretch = span >= 20 ? 255 / span : 0;
+    const step = 255 / inks.length;
+    // The band choice goes into a 256 entry table first, so the per pixel work is a luminance
+    // and an index rather than a divide, a floor and a clamp for every pixel of the frame.
+    const lut = new Uint8Array(256 * 3);
+    for(let v = 0; v < 256; v++){
+      const ink = inks[Math.min(inks.length - 1, Math.max(0, Math.floor(v / step)))];
+      lut[v * 3] = ink[0] + 0.5;
+      lut[v * 3 + 1] = ink[1] + 0.5;
+      lut[v * 3 + 2] = ink[2] + 0.5;
+    }
     for(let i=0;i<d.length;i+=4){
-      d[i]   = Math.floor(d[i]   / 255 * levels) * Math.floor(255 / (levels - 1));
-      d[i+1] = Math.floor(d[i+1] / 255 * levels) * Math.floor(255 / (levels - 1));
-      d[i+2] = Math.floor(d[i+2] / 255 * levels) * Math.floor(255 / (levels - 1));
+      const lum = d[i] * 0.299 + d[i+1] * 0.587 + d[i+2] * 0.114;
+      const v = stretch ? Math.max(0, Math.min(255, (lum - p2) * stretch)) : lum;
+      const k = (v | 0) * 3;
+      d[i] = lut[k]; d[i+1] = lut[k + 1]; d[i+2] = lut[k + 2];
     }
   }
 
   if(params.postFX.includes("duotone")){
-    const c1 = [40, 20, 120];
-    const c2 = [255, 200, 70];
+    // The two inks come from the palette rather than fixed hues, so the effect sits inside
+    // the scene's own colours. Fill Colour A and B are ordered by brightness, and if they
+    // are too close to read as a ramp the ends are pushed apart toward black and white.
+    const lumOf = c => c[0] * 0.299 + c[1] * 0.587 + c[2] * 0.114;
+    let dark = parseColour(params.shapeColor1) || [40, 20, 120];
+    let light = parseColour(params.shapeColor2) || [255, 200, 70];
+    if(Math.abs(dark[0] - light[0]) + Math.abs(dark[1] - light[1]) + Math.abs(dark[2] - light[2]) < 60){
+      dark = [dark[0] * 0.25, dark[1] * 0.25, dark[2] * 0.25];
+      light = [
+        light[0] + (255 - light[0]) * 0.55,
+        light[1] + (255 - light[1]) * 0.55,
+        light[2] + (255 - light[2]) * 0.55
+      ];
+    }
+    if(lumOf(dark) > lumOf(light)){ const swap = dark; dark = light; light = swap; }
     for(let i=0;i<d.length;i+=4){
-      const lum = (d[i] * 0.299 + d[i+1] * 0.587 + d[i+2] * 0.114) / 255;
-      d[i]   = c1[0] + (c2[0] - c1[0]) * lum;
-      d[i+1] = c1[1] + (c2[1] - c1[1]) * lum;
-      d[i+2] = c1[2] + (c2[2] - c1[2]) * lum;
+      const l = (d[i] * 0.299 + d[i+1] * 0.587 + d[i+2] * 0.114) / 255;
+      d[i]   = dark[0] + (light[0] - dark[0]) * l;
+      d[i+1] = dark[1] + (light[1] - dark[1]) * l;
+      d[i+2] = dark[2] + (light[2] - dark[2]) * l;
     }
   }
 
   if(params.postFX.includes("pixelate")){
-    const grid = Math.max(6, Math.floor(20 - intensity * 16));
-    for(let y=0;y<H;y+=grid){
-      for(let x=0;x<W;x+=grid){
-        const idx = ((y * W) + x) * 4;
+    const grid = Math.max(4, Math.round(20 - intensity * 16));
+    for(let y=0;y<fh;y+=grid){
+      for(let x=0;x<fw;x+=grid){
+        const idx = ((y * fw) + x) * 4;
         const r = d[idx], g = d[idx+1], b = d[idx+2], a = d[idx+3];
-        for(let yy=y; yy<y+grid && yy<H; yy++){
-          for(let xx=x; xx<x+grid && xx<W; xx++){
-            const i2 = ((yy * W) + xx) * 4;
+        for(let yy=y; yy<y+grid && yy<fh; yy++){
+          for(let xx=x; xx<x+grid && xx<fw; xx++){
+            const i2 = ((yy * fw) + xx) * 4;
             d[i2]=r; d[i2+1]=g; d[i2+2]=b; d[i2+3]=a;
           }
         }
@@ -352,11 +1290,11 @@ function applyPostFX(){
   }
 
   if(params.postFX.includes("crt")){
-    const scan = 3 + Math.floor(intensity * 3);
-    for(let y=0;y<H;y+=scan){
+    const scan = Math.max(1, Math.round(3 + Math.floor(intensity * 3)));
+    for(let y=0;y<fh;y+=scan){
       const lineBias = 0.86 + Math.sin(y * 0.065 + params.angle * 0.18) * 0.08;
-      for(let x=0;x<W;x++){
-        const idx = ((y * W) + x) * 4;
+      for(let x=0;x<fw;x++){
+        const idx = ((y * fw) + x) * 4;
         d[idx]   = Math.min(255, d[idx] * lineBias);
         d[idx+1] = Math.min(255, d[idx+1] * lineBias);
         d[idx+2] = Math.min(255, d[idx+2] * lineBias);
@@ -364,11 +1302,11 @@ function applyPostFX(){
     }
     const wobble = Math.sin(params.angle * 0.18) * 0.24 * intensity;
     if (wobble > 0.03) {
-      for(let y=0;y<H;y+=5){
+      for(let y=0;y<fh;y+=5){
         const shift = Math.floor((Math.sin(y * 0.045 + params.angle * 0.22) * 0.5 + 0.5) * wobble * 2);
-        for(let x=0;x<W-shift;x++){
-          const idx = ((y * W) + x) * 4;
-          const idx2 = ((y * W) + x + shift) * 4;
+        for(let x=0;x<fw-shift;x++){
+          const idx = ((y * fw) + x) * 4;
+          const idx2 = ((y * fw) + x + shift) * 4;
           d[idx2] = d[idx];
           d[idx2+1] = d[idx+1];
           d[idx2+2] = d[idx+2];
@@ -380,39 +1318,43 @@ function applyPostFX(){
   if(params.postFX.includes("feedback")){
     if(!params.fxBuffers.feedback){
       const buf = document.createElement('canvas');
-      buf.width = W;
-      buf.height = H;
+      buf.width = fw;
+      buf.height = fh;
       params.fxBuffers.feedback = buf;
-      const fctx = buf.getContext('2d');
-      fctx.clearRect(0, 0, W, H);
-      fctx.drawImage(canvas, 0, 0, W, H);
+      const bctx = buf.getContext('2d');
+      bctx.clearRect(0, 0, fw, fh);
+      bctx.drawImage(fxCanvas, 0, 0, fw, fh);
     }
   }
 
-  ctx.putImageData(image,0,0);
+  fxc.putImageData(image, 0, 0);
 
   if(params.postFX.includes("feedback")){
     const fb = params.fxBuffers.feedback;
-    ctx.save();
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = 0.42 + intensity * 0.24;
-    ctx.drawImage(fb, -2, 0, W + 4, H);
-    ctx.drawImage(fb, 2, 0, W + 4, H);
-    ctx.restore();
+    fxc.save();
+    fxc.globalCompositeOperation = 'source-over';
+    fxc.globalAlpha = 0.42 + intensity * 0.24;
+    fxc.drawImage(fb, -2, 0, fw + 4, fh);
+    fxc.drawImage(fb, 2, 0, fw + 4, fh);
+    fxc.restore();
 
-    const fctx = fb.getContext('2d');
-    fctx.save();
-    fctx.globalCompositeOperation = 'source-over';
-    fctx.fillStyle = `rgba(0,0,0,${0.02 + intensity * 0.018})`;
-    fctx.fillRect(0, 0, W, H);
-    fctx.globalAlpha = 0.48 + intensity * 0.24;
-    fctx.drawImage(canvas, 0, 0, W, H);
-    fctx.restore();
+    const bctx = fb.getContext('2d');
+    bctx.save();
+    bctx.globalCompositeOperation = 'source-over';
+    bctx.fillStyle = `rgba(0,0,0,${0.02 + intensity * 0.018})`;
+    bctx.fillRect(0, 0, fw, fh);
+    bctx.globalAlpha = 0.48 + intensity * 0.24;
+    bctx.drawImage(fxCanvas, 0, 0, fw, fh);
+    bctx.restore();
   }
 
   if(params.postFX.includes("glitch")){
-    const tempC = document.createElement('canvas');
-    tempC.width = W; tempC.height = H;
+    let tempC = params.fxBuffers.glitch;
+    if(!tempC || tempC.width !== fw || tempC.height !== fh){
+      tempC = document.createElement('canvas');
+      tempC.width = fw; tempC.height = fh;
+      params.fxBuffers.glitch = tempC;
+    }
     const tempCtx = tempC.getContext('2d');
     tempCtx.putImageData(image, 0, 0);
 
@@ -420,54 +1362,69 @@ function applyPostFX(){
     const baseShift = 18 + intensity * 72;
     const layerAlpha = 0.22 + intensity * 0.34;
 
-    ctx.save();
+    fxc.save();
     for (let i = 0; i < sliceCount; i++) {
       const sliceH = 8 + Math.random() * 120;
-      const sliceY = Math.floor(Math.random() * Math.max(1, H - sliceH));
+      const sliceY = Math.floor(Math.random() * Math.max(1, fh - sliceH));
       const xShift = Math.floor((Math.random() - 0.5) * baseShift * (0.55 + Math.random() * 0.7));
-      ctx.globalAlpha = 0.65 + Math.random() * 0.25;
-      ctx.drawImage(tempC, 0, sliceY, W, sliceH, xShift, sliceY, W, sliceH);
+      fxc.globalAlpha = 0.65 + Math.random() * 0.25;
+      fxc.drawImage(tempC, 0, sliceY, fw, sliceH, xShift, sliceY, fw, sliceH);
 
       if (Math.random() > 0.35) {
-        ctx.globalCompositeOperation = 'screen';
-        ctx.globalAlpha = layerAlpha * 0.95;
-        ctx.drawImage(tempC, 0, sliceY, W, sliceH, xShift * -0.45, sliceY, W, sliceH);
-        ctx.globalCompositeOperation = 'source-over';
+        fxc.globalCompositeOperation = 'screen';
+        fxc.globalAlpha = layerAlpha * 0.95;
+        fxc.drawImage(tempC, 0, sliceY, fw, sliceH, xShift * -0.45, sliceY, fw, sliceH);
+        fxc.globalCompositeOperation = 'source-over';
       }
     }
 
     const offset = Math.floor(6 + intensity * 24);
-    ctx.globalAlpha = 0.18 + intensity * 0.30;
-    ctx.drawImage(tempC, offset, 0, W - offset, H, 0, 0, W - offset, H);
-    ctx.drawImage(tempC, 0, 0, W - offset, H, offset, 0, W - offset, H);
-    ctx.restore();
+    fxc.globalAlpha = 0.18 + intensity * 0.30;
+    fxc.drawImage(tempC, offset, 0, fw - offset, fh, 0, 0, fw - offset, fh);
+    fxc.drawImage(tempC, 0, 0, fw - offset, fh, offset, 0, fw - offset, fh);
+    fxc.restore();
 
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = 0.14 + intensity * 0.22;
-    ctx.drawImage(tempC, 0, 0, W, H, -3 - intensity * 4, 0, W, H);
-    ctx.globalAlpha = 0.14 + intensity * 0.22;
-    ctx.drawImage(tempC, 0, 0, W, H, 3 + intensity * 4, 0, W, H);
-    ctx.restore();
+    fxc.save();
+    fxc.globalCompositeOperation = 'lighter';
+    fxc.globalAlpha = 0.14 + intensity * 0.22;
+    fxc.drawImage(tempC, 0, 0, fw, fh, -3 - intensity * 4, 0, fw, fh);
+    fxc.globalAlpha = 0.14 + intensity * 0.22;
+    fxc.drawImage(tempC, 0, 0, fw, fh, 3 + intensity * 4, 0, fw, fh);
+    fxc.restore();
 
-    ctx.save();
-    ctx.globalCompositeOperation = 'difference';
-    ctx.globalAlpha = 0.08 + intensity * 0.16;
-    ctx.drawImage(tempC, 0, 0, W, H);
-    ctx.restore();
+    fxc.save();
+    fxc.globalCompositeOperation = 'difference';
+    fxc.globalAlpha = 0.08 + intensity * 0.16;
+    fxc.drawImage(tempC, 0, 0, fw, fh);
+    fxc.restore();
   }
+
+  // Scale the processed frame back up to the device-pixel canvas.
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, PW, PH);
+  ctx.drawImage(fxCanvas, 0, 0, PW, PH);
+  ctx.restore();
 }
 
 function updateAutoGradient() {
   if (!params.autoGradient) return;
   const hue = (params.angle * 12) % 360;
-  params.bgColor1 = `hsl(${hue}, 85%, 55%)`;
-  params.bgColor2 = `hsl(${(hue + 110) % 360}, 90%, 45%)`;
+  // Move the fade target in step, otherwise the cross-fade would fight the cycle.
+  colourTargets.bgColor1 = params.bgColor1 = `hsl(${hue}, 85%, 55%)`;
+  colourTargets.bgColor2 = params.bgColor2 = `hsl(${(hue + 110) % 360}, 90%, 45%)`;
 }
 
-function draw(){
-  updateAudio();
+let lastFrameTime = performance.now();
+
+function draw(now){
+  if(now === undefined) now = lastFrameTime;
+  const dt = Math.min(0.033, Math.max(0.001, (now - lastFrameTime) / 1000));
+  lastFrameTime = now;
+
+  updateAudio(dt);
   updateAutoGradient();
+  stepColourFade(dt);
 
   if(params.bgSource==="color"){
     if(params.bgGradient || params.autoGradient){
@@ -483,107 +1440,47 @@ function draw(){
 
   drawGrid();
 
-  if((params.placement==="scatter" || params.animation==="rain") && (!params.particles || params.particles.length!==params.count)){
-    params.particles = [];
-    for(let i=0;i<params.count; i++){
-      params.particles.push({
-        x:Math.random()*W,
-        y:Math.random()*(H*1.2) - H*0.2,
-        vx:(Math.random()-0.5)*params.speed*0.06,
-        vy:(Math.random()-0.5)*params.speed*0.06,
-        rainOffset: Math.random() * 1000 
-      });
-    }
-  }
+  syncElements();
+  stepElements(dt, params.speed, params.angle);
 
   const reactScale = getReactiveScale();
 
-  for(let i=0;i<params.count; i++){
+  for(let i=0;i<elements.length; i++){
+    const el = elements[i];
+    const appear = el.grow * el.grow * (3 - 2 * el.grow);   // smoothstep: new shapes ease in
+    const sz = params.size * reactScale * 0.9 * el.sizeMul * el.breath * appear;
     ctx.save();
-    let x=0, y=0;
-    let baseX = 0, baseY = 0;
-    const p = params.particles[i];
-
-    if(params.placement==="scatter"){
-      if(p){
-        if(params.animation !== "rain"){
-          p.x += p.vx * (0.56 + params.beatLevel * 0.28);
-          p.y += p.vy * (0.56 + params.beatLevel * 0.28);
-          if(p.x > W || p.x < 0) p.vx *= -1;
-          if(p.y > H || p.y < 0) p.vy *= -1;
-          baseY = p.y - H/2;
-        } else {
-          baseY = 0;
-        }
-        baseX = p.x - W/2;
-      }
-    } else if(params.placement==="vertical"){
-      baseX = 0;
-      baseY = ((i / Math.max(1, params.count - 1)) - 0.5) * H * 0.92;
-    } else if(params.placement==="horizontal"){
-      baseX = ((i / Math.max(1, params.count - 1)) - 0.5) * W * 0.92;
-      baseY = 0;
-    }
-
-    let sz = params.size * reactScale * 0.9;
-
-    if(params.animation==="bounce"){
-        x = baseX;
-        y = baseY + Math.sin(params.angle * 1.8 + i * 0.65) * (H * 0.18) * reactScale;
-    }
-    else if(params.animation==="pulse"){
-        x = baseX;
-        y = baseY;
-        sz *= 0.85 + Math.pow(Math.sin(params.angle * 4.8 + i), 3) * (0.5 + params.beatLevel * 0.7);
-    }
-    else if(params.animation==="wave"){
-        x = baseX;
-        y = baseY;
-        ctx.rotate(Math.sin(params.angle * 3.6 + i) * 0.38 * reactScale);
-        ctx.scale(1 + params.beatLevel * 0.28, 1 - params.beatLevel * 0.18);
-    }
-    else if(params.animation==="rain"){
-        const fallOffset = (params.angle * params.speed * 2.1 + (p ? p.rainOffset : i * 37)) % (H * 2.2);
-        x = baseX;
-        y = baseY + fallOffset - H * 0.95;
-        y += Math.sin(params.angle * 0.004 + i * 0.8) * H * 0.04;
-    }
-
-    ctx.translate(W/2 + x, H/2 + y);
-    ctx.rotate(Math.sin(params.angle * 2) * 0.12 * reactScale);
-
-    drawShapeVisual(sz, i); 
+    ctx.translate(el.x, el.y);
+    ctx.rotate(el.rot);
+    drawShapeVisual(sz, i);
     ctx.restore();
   }
 
-  params.angle += params.speed * 0.0034 * (1 + params.beatLevel * 0.75);
+  params.angle += dt * (0.6 + params.speed * 0.12) * (1 + params.beatLevel * 0.75);
 
-  if(params.grainEnabled){
-    let img = ctx.getImageData(0,0,W,H), d = img.data;
-    const grainStrength = 25 + params.beatLevel * 65;
-    for(let i = 0; i < d.length; i += 4){
-      let n = (Math.random()-0.5) * grainStrength;
-      d[i] += n; d[i+1] += n; d[i+2] += n;
-    }
-    ctx.putImageData(img,0,0);
-  }
+  // FX first, then grain, so the grain stays at device resolution and is not
+  // softened by the FX buffer's scale.
+  if(needsPixelPass()) applyPostFX();
+  if(params.grainEnabled) drawGrain();
 
-  applyPostFX();
   requestAnimationFrame(draw);
 }
 
 window.addEventListener("resize", () => {
-  W = canvas.width = window.innerWidth;
-  H = canvas.height = window.innerHeight;
+  resizeCanvas();
   params.fxBuffers = {};
+  // Re-place targets only: existing elements keep their positions and are brought
+  // back into frame by the physics, so a resize does not snap everything to new spots.
+  layoutElements();
 });
 
-draw();
+requestAnimationFrame(draw);
 
 // Send current visual params to opener/parent once so controllers can reflect the startup static
 function sendCurrentState(){
   try{
     const snapshot = Object.assign({}, params);
+    delete snapshot.fxBuffers;
     if(window.parent && window.parent !== window) window.parent.postMessage({type:'visualState', state: snapshot}, '*');
     if(window.opener && !window.opener.closed) window.opener.postMessage({type:'visualState', state: snapshot}, '*');
   }catch(e){/* ignore */}
@@ -603,6 +1500,10 @@ window.addEventListener("message", async e => {
   // treat this as the 'start' signal unless the message asks to apply to the visual.
   const clone = Object.assign({}, d);
   delete clone.type; // ignore message envelope fields
+  // Colours arrive as targets and are eased by stepColourFade.
+  for(const key of FADE_KEYS){
+    if(key in clone){ colourTargets[key] = clone[key]; delete clone[key]; }
+  }
   if(Object.keys(clone).length) Object.assign(params, clone);
 
   if("micSyncEnabled" in d){
@@ -616,9 +1517,13 @@ window.addEventListener("message", async e => {
         analyser.fftSize = 512;
         analyser.smoothingTimeConstant = 0.65;
         source.connect(analyser);
+        visualMicStream = stream;
+        visualAudioCtx = audioCtx;
       } catch(err){ console.warn("Visual mic sync failed", err); }
     } else if (!d.micSyncEnabled && analyser) {
       analyser = null;
+      if(visualMicStream){ visualMicStream.getTracks().forEach(t => t.stop()); visualMicStream = null; }
+      if(visualAudioCtx){ visualAudioCtx.close(); visualAudioCtx = null; }
     }
   }
 });

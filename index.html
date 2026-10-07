@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-GB">
 <head>
 <meta charset="UTF-8">
 <title>blackbox controller</title>
@@ -59,10 +59,10 @@ body.dark-mode #controller {
 }
 
 body.dark-mode .groupbox {
-  border-top-color: #4d4d4d;
-  border-left-color: #4d4d4d;
-  border-bottom-color: #0f0f0f;
-  border-right-color: #0f0f0f;
+  border-top-color: #0f0f0f;
+  border-left-color: #0f0f0f;
+  border-bottom-color: #4d4d4d;
+  border-right-color: #4d4d4d;
 }
 
 body.dark-mode input[type="number"],
@@ -106,6 +106,7 @@ body.dark-mode .groupbox legend {
 
 body.dark-mode label,
 body.dark-mode #micStatus,
+body.dark-mode #continuousRandomiseStatus,
 body.dark-mode #beatIndicator {
   color: #f1f1f1;
 }
@@ -135,8 +136,8 @@ body.dark-mode #portfolioLink a {
 #controller {
   width: 100%;
   max-width: 420px;
-  padding: 12px;
-  background: var(--color-window);
+  padding: 10px;
+  background: var(--color-btnface);
   border-top: 2px solid var(--color-highlight);
   border-left: 2px solid var(--color-highlight);
   border-bottom: 2px solid var(--color-shadow);
@@ -147,44 +148,69 @@ body.dark-mode #portfolioLink a {
 }
 
 h2 { 
-  margin: -12px -12px 20px -12px;
-  padding: 4px 12px;
+  margin: -10px -10px 12px -10px;
+  padding: 3px 8px;
   text-align: left;
   color: var(--color-titletext);
-  font-weight: normal;
-  font-size: 12px;
+  font-weight: bold;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 1px;
-  background: linear-gradient(to right, #0a2a8a 0%, #1f5bd6 45%, #5296fb 100%);
-  border-bottom: 1px solid #0a2a8a;
+  background: var(--color-titlebg);
+  border-bottom: 1px solid #000040;
 }
 
 .groupbox {
-  margin: 12px 0 12px 0;
-  padding: 8px 12px 8px 12px;
-  border-top: 1px solid var(--color-highlight);
-  border-left: 1px solid var(--color-highlight);
-  border-bottom: 1px solid var(--color-shadow);
-  border-right: 1px solid var(--color-shadow);
+  margin: 10px 0 0 0;
+  padding: 7px 10px 9px 10px;
+  border-top: 1px solid var(--color-shadow);
+  border-left: 1px solid var(--color-shadow);
+  border-bottom: 1px solid var(--color-highlight);
+  border-right: 1px solid var(--color-highlight);
 }
 
 .groupbox legend {
   color: var(--color-windowtext);
   font-weight: bold;
   font-size: 11px;
-  padding: 0 6px 0 4px;
-  background: var(--color-window);
+  padding: 0 5px 0 3px;
+  background: var(--color-btnface);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
-.subgroup { margin: 6px 0 0 20px; }
+.subgroup { margin: 0; padding-left: 10px; border-left: 1px dotted var(--color-shadow); }
 
-label { 
-  display: block; 
-  margin: 8px 0 4px 0; 
-  font-size: 11px;
+label { font-size: 11px; }
+
+/* Rows: caption in a fixed left column, control on the right, the way a Windows 95
+   property sheet is laid out. display:contents lets a row keep plain label markup
+   while its two parts land in the two columns. */
+.rows {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  column-gap: 8px;
+  row-gap: 5px;
+  align-items: center;
 }
+.rows > label { display: contents; }
+.rows > label.check {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  column-gap: 8px;
+  cursor: pointer;
+}
+.rows > .full { grid-column: 1 / -1; }
+.rows > button { grid-column: 1 / -1; margin: 0; }
+.rows > button:active { margin: 0; }
+.rows > .scene-grid { margin: 0; }
+.lbl { font-size: 11px; }
+.ctl { display: flex; align-items: center; column-gap: 6px; min-width: 0; }
+.ctl > input[type="range"] { flex: 1 1 auto; min-width: 0; }
+#shapeLabel { min-width: 30px; text-align: right; }
+.hint { font-size: 10px; color: var(--color-graytext); }
+body.dark-mode .hint { color: #9a9a9a; }
 
 input[type="number"], input[type="range"], select {
   width: 100%; 
@@ -340,22 +366,57 @@ button:active {
 .colorPreview {
   display: inline-block; 
   width: 18px; height: 18px; 
-  margin-left: 5px; 
   vertical-align: middle; 
-  border: 1px solid #808080;
+  border-top: 1px solid var(--color-shadow);
+  border-left: 1px solid var(--color-shadow);
+  border-bottom: 1px solid var(--color-highlight);
+  border-right: 1px solid var(--color-highlight);
 }
 
-.hidden { display: none; }
-select[multiple] { height: 100px; }
+.hidden { display: none !important; }
+select[multiple] { height: 96px; }
+
+.scene-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin: 6px 0 2px 0;
+}
+.scene-grid button {
+  width: 100%;
+  margin: 0;
+  padding: 6px 4px;
+}
+.scene-grid button:active {
+  padding: 7px 3px 5px 5px;
+  margin: 0;
+}
+.scene-grid button.selected {
+  background: var(--color-window);
+  border-top-color: var(--color-shadow);
+  border-left-color: var(--color-shadow);
+  border-bottom-color: var(--color-highlight);
+  border-right-color: var(--color-highlight);
+  font-weight: bold;
+  padding: 7px 3px 5px 5px;
+}
+body.dark-mode .scene-grid button.selected {
+  background: #0d0d0d;
+  color: #ffffff;
+  border-top-color: #050505;
+  border-left-color: #050505;
+  border-bottom-color: #6a6a6a;
+  border-right-color: #6a6a6a;
+}
 
 .system-preamble {
-  margin-bottom: 12px;
-  padding: 8px 10px;
+  margin-bottom: 10px;
+  padding: 7px 9px;
   font-size: 10px;
   line-height: 1.35;
-  color: var(--color-windowtext);
-  background: #f4f4f4;
-  border: 1px solid #808080;
+  color: #000000;
+  background: #ffffe1;
+  border: 1px solid #000000;
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
@@ -369,13 +430,12 @@ body.dark-mode .system-preamble .warning {
   color: #ff7a3d;
 }
 
-#micSyncLabel { margin-top:12px; font-size: 12px; }
-#micStatus { font-size:10px; margin:4px 0 8px 22px; min-height: 14px; }
+.status { font-size: 10px; min-height: 13px; padding-left: 3px; }
+#micStatus:empty, #continuousRandomiseStatus:empty { display: none; }
 #beatIndicator {
   font-size: 10px;
-  color: #ff8800;
+  color: #cc6600;
   font-weight: bold;
-  margin-left: 22px;
   opacity: 0;
   transition: opacity 0.4s;
 }
@@ -402,129 +462,106 @@ body.dark-mode .system-preamble .warning {
 
 <div class="system-preamble">
   'OPEN VISUAL' IS THE LIVE CONTROLLED OUTPUT.<br><br>
-  ADJUST PARAMETERS BELOW — CHANGES ARE REFLECTED IN REAL TIME IN THE VISUAL OUTPUT WINDOW.<br><br>
+  ADJUST PARAMETERS BELOW: CHANGES ARE REFLECTED IN REAL TIME IN THE VISUAL OUTPUT WINDOW.<br><br>
   <span class="warning">NOTE: THIS EXPERIENCE IS NOT OPTIMISED FOR MOBILE DEVICES.</span>
 </div>
 
 <fieldset class="groupbox">
 <legend>INTERFACE</legend>
-<label id="darkModeLabel">
-  <input type="checkbox" id="darkModeToggle">
-  DARK MODE
-</label>
+<div class="rows">
+  <label class="check" id="darkModeLabel"><input type="checkbox" id="darkModeToggle"><span>DARK MODE</span></label>
+</div>
 </fieldset>
 
 <fieldset class="groupbox">
 <legend>SYSTEM</legend>
-<button id="openVisual">[ OPEN VISUAL ]</button>
-<button id="randomise">[ I'M FEELING LUCKY ]</button>
+<div class="rows">
+  <button id="openVisual">[ OPEN VISUAL ]</button>
+  <button id="randomise">[ I'M FEELING LUCKY ]</button>
+  <label class="check" id="continuousRandomiseLabel"><input type="checkbox" id="continuousRandomise"><span>CONTINUOUS MODE</span></label>
+  <div id="continuousRandomiseStatus" class="full status hidden"></div>
 
-<label id="micSyncLabel">
-  <input type="checkbox" id="micSyncEnabled"> 
-  MIC MODE (SYNCOPATE TO SOUND)
-</label>
-<label>mic sensitivity: <input type="range" id="micSensitivity" min="20" max="100" value="60"></label>
-<div id="micStatus"></div>
-<div id="beatIndicator">♪ BEAT DETECTED ♪</div>
+  <label class="check" id="micSyncLabel"><input type="checkbox" id="micSyncEnabled"><span>MIC MODE (ON/OFF)</span></label>
+  <div id="micStatus" class="full status"></div>
+  <div id="beatIndicator" class="full">♪ BEAT DETECTED ♪</div>
 
-<div id="bgColorControls">
-  <label>BG Colour A:
-    <input type="color" id="bgColor1" value="#000000">
-    <span id="bgColor1Preview" class="colorPreview"></span>
-  </label>
-  <label>BG Colour B:
-    <input type="color" id="bgColor2" value="#000000">
-    <span id="bgColor2Preview" class="colorPreview"></span>
-  </label>
-  <label><input type="checkbox" id="bgGradient"> Gradient Mode</label>
-  <label><input type="checkbox" id="autoGradient"> Auto Cycle</label>
-  <label>Background Source:
-    <select id="bgSource">
-      <option value="color">Color</option>
-      <option value="macbookCam">MacBook Cam</option>
-      <option value="usbCam">USB Cam</option>
-    </select>
-  </label>
-</div>
+  <label><span class="lbl">BG Colour A:</span><span class="ctl"><input type="color" id="bgColor1" value="#000000"><span id="bgColor1Preview" class="colorPreview"></span></span></label>
+  <label><span class="lbl">BG Colour B:</span><span class="ctl"><input type="color" id="bgColor2" value="#000000"><span id="bgColor2Preview" class="colorPreview"></span></span></label>
+  <label class="check"><input type="checkbox" id="bgGradient"><span>GRADIENT MODE</span></label>
+  <label class="check"><input type="checkbox" id="autoGradient"><span>AUTO CYCLE</span></label>
+  <label><span class="lbl">Source:</span><span class="ctl"><select id="bgSource"><option value="color">Colour</option><option value="camera">Camera</option></select></span></label>
 
-<label><input type="checkbox" id="gridEnabled"> Show Grid</label>
-<div id="gridControls" class="subgroup hidden">
-  <label>Grid Colour:
-    <input type="color" id="gridColor" value="#222222">
-    <span id="gridColorPreview" class="colorPreview"></span>
-  </label>
-  <label>Spacing: <input type="range" id="gridSpacing" min="5" max="200" value="50"></label>
+  <label class="check"><input type="checkbox" id="gridEnabled"><span>SHOW GRID</span></label>
+  <div id="gridControls" class="full subgroup rows hidden">
+    <label><span class="lbl">Grid Colour:</span><span class="ctl"><input type="color" id="gridColor" value="#222222"><span id="gridColorPreview" class="colorPreview"></span></span></label>
+    <label><span class="lbl">Spacing:</span><span class="ctl"><input type="range" id="gridSpacing" min="5" max="200" value="50"></span></label>
+  </div>
 </div>
 </fieldset>
 
 <fieldset class="groupbox">
 <legend>OBJECT</legend>
-<label>Shape Style: 
-  <input type="range" id="shapes" min="0" max="5" value="0" step="1" style="width:60%; display:inline-block; margin-left:10px;"> 
-  <span id="shapeLabel" style="margin-left:10px;">[NONE]</span>
-</label>
-<label>Size: <input type="range" id="size" min="10" max="500" value="120"></label>
-<label>Quantity: <input type="range" id="count" min="0" max="200" value="12"></label>
+<div class="rows">
+  <label><span class="lbl">Shape Style:</span><span class="ctl"><input type="range" id="shapes" min="0" max="5" value="0" step="1"><span id="shapeLabel">[NONE]</span></span></label>
+  <label><span class="lbl">Size:</span><span class="ctl"><input type="range" id="size" min="10" max="500" value="120"></span></label>
+  <label><span class="lbl">Quantity:</span><span class="ctl"><input type="range" id="count" min="0" max="200" value="12"></span></label>
+</div>
 </fieldset>
 
 <fieldset class="groupbox">
 <legend>STYLE</legend>
-<label>Fill Colour A:
-  <input type="color" id="shapeColor1" value="#000000">
-  <span id="shapeColor1Preview" class="colorPreview"></span>
-</label>
-<label>Fill Colour B:
-  <input type="color" id="shapeColor2" value="#000000">
-  <span id="shapeColor2Preview" class="colorPreview"></span>
-</label>
-<label><input type="checkbox" id="shapeGradient"> Shape Gradient</label>
-<label><input type="checkbox" id="shapeAutoGradient"> Auto Cycle</label>
-
-<label><input type="checkbox" id="strokeEnabled"> Stroke Enabled</label>
-<label>Stroke Colour:
-  <input type="color" id="strokeColor" value="#ffffff">
-  <span id="strokeColorPreview" class="colorPreview"></span>
-</label>
-<label>Width: <input type="range" id="strokeWidth" min="1" max="20" value="3"></label>
+<div class="rows">
+  <label><span class="lbl">Fill Colour A:</span><span class="ctl"><input type="color" id="shapeColor1" value="#000000"><span id="shapeColor1Preview" class="colorPreview"></span></span></label>
+  <label><span class="lbl">Fill Colour B:</span><span class="ctl"><input type="color" id="shapeColor2" value="#000000"><span id="shapeColor2Preview" class="colorPreview"></span></span></label>
+  <label class="check"><input type="checkbox" id="shapeGradient"><span>SHAPE GRADIENT</span></label>
+  <label class="check"><input type="checkbox" id="shapeAutoGradient"><span>AUTO CYCLE</span></label>
+  <label class="check"><input type="checkbox" id="strokeEnabled"><span>STROKE ENABLED</span></label>
+  <label><span class="lbl">Stroke Colour:</span><span class="ctl"><input type="color" id="strokeColor" value="#ffffff"><span id="strokeColorPreview" class="colorPreview"></span></span></label>
+  <label><span class="lbl">Width:</span><span class="ctl"><input type="range" id="strokeWidth" min="1" max="20" value="3"></span></label>
+</div>
 </fieldset>
 
 <fieldset class="groupbox">
-<legend>ANIMATION</legend>
-<label>Placement:
-  <select id="placement">
-    <option value="normal">[CENTER]</option>
-    <option value="scatter">[SCATTER]</option>
-    <option value="vertical">[STACK V]</option>
-    <option value="horizontal">[STACK H]</option>
-  </select>
-</label>
-<label>Motion:
-  <select id="animation">
-    <option value="bounce">[BOUNCE]</option>
-    <option value="pulse">[PULSE]</option>
-    <option value="wave">[WAVE]</option>
-    <option value="rain">[RAIN]</option>
-  </select>
-</label>
-<label>Speed: <input type="range" id="speed" min="0.1" max="40" step="0.1" value="5"></label>
-<label><input type="checkbox" id="invertColors"> Invert Colors</label>
+<legend>MOTION</legend>
+<div class="rows">
+  <div id="sceneGrid" class="scene-grid full">
+    <button type="button" data-scene="rain">RAIN</button>
+    <button type="button" data-scene="wind">WIND</button>
+    <button type="button" data-scene="wave">WAVE</button>
+    <button type="button" data-scene="flow">FLOW</button>
+    <button type="button" data-scene="flock">FLOCK</button>
+    <button type="button" data-scene="bounce">BOUNCE</button>
+    <button type="button" data-scene="pulse">PULSE</button>
+    <button type="button" data-scene="orbit">ORBIT</button>
+  </div>
+  <label id="arrangementLabel" class="hidden"><span class="lbl">Arrangement:</span><span class="ctl"><select id="placement">
+      <option value="normal">CLUSTER</option>
+      <option value="horizontal">ROW</option>
+      <option value="vertical">COLUMN</option>
+    </select></span></label>
+  <label><span class="lbl">Speed:</span><span class="ctl"><input type="range" id="speed" min="0.1" max="40" step="0.1" value="5"></span></label>
+</div>
 </fieldset>
 
 <fieldset class="groupbox">
 <legend>POST FX</legend>
-<label>Select FX (Hold Ctrl/Cmd):
-  <select id="postFX" multiple size="5" style="margin-top: 5px;">
+<div class="rows">
+  <div class="full hint">HOLD CTRL / CMD TO CHOOSE MORE THAN ONE</div>
+  <select id="postFX" class="full" multiple size="5" aria-label="Post effects">
     <option value="none" selected>None</option>
     <option value="pixelate">Pixelate</option>
     <option value="crt">CRT</option>
     <option value="threshold">Threshold</option>
-    <option value="posterize">Posterize</option>
+    <option value="posterize">Posterise</option>
+    <option value="dither">Dither</option>
     <option value="feedback">Feedback</option>
     <option value="glitch">Glitch</option>
     <option value="duotone">Duotone</option>
+    <option value="particles">Particles</option>
   </select>
-</label>
-<label><input type="checkbox" id="grainEnabled" checked> Film Grain</label>
+  <label class="check"><input type="checkbox" id="grainEnabled" checked><span>FILM GRAIN</span></label>
+  <label class="check"><input type="checkbox" id="invertColors"><span>INVERT COLOURS</span></label>
+</div>
 </fieldset>
 
 <div id="portfolioLink">
@@ -538,7 +575,79 @@ let analyser = null;
 let micStream = null;
 
 const shapeNames = ["✕", "■", "✦", "⏺", "✴", "⌇"];
-const allFX = ["none", "pixelate", "crt", "threshold", "posterize", "feedback", "glitch", "duotone"];
+const allFX = ["none", "pixelate", "crt", "threshold", "posterize", "dither", "feedback", "glitch", "duotone", "particles"];
+
+/* One click is one complete physicality. A scene fixes the motion, the arrangement
+   (where it applies) and the physics values, so there are no combinations for the
+   user to reason about. 'arrangement' means the scene also offers CLUSTER / ROW /
+   COLUMN, and its value is the arrangement that reads best by default. */
+const SCENES = {
+  rain:   { animation: "rain",   placement: "scatter",    arrangement: false, turbulence: 1.0, gravity: 1.0, drag: 1.0, cohesion: 1.0 },
+  wind:   { animation: "wind",   placement: "scatter",    arrangement: false, turbulence: 1.2, gravity: 1.0, drag: 1.0, cohesion: 1.0 },
+  wave:   { animation: "wave",   placement: "horizontal", arrangement: true,  turbulence: 0.8, gravity: 1.0, drag: 0.9, cohesion: 1.2 },
+  flow:   { animation: "flow",   placement: "scatter",    arrangement: false, turbulence: 1.1, gravity: 1.0, drag: 0.9, cohesion: 1.0 },
+  flock:  { animation: "flock",  placement: "scatter",    arrangement: false, turbulence: 0.8, gravity: 1.0, drag: 0.8, cohesion: 1.4 },
+  bounce: { animation: "bounce", placement: "scatter",    arrangement: false, turbulence: 1.0, gravity: 1.0, drag: 1.0, cohesion: 1.0 },
+  pulse:  { animation: "pulse",  placement: "normal",     arrangement: true,  turbulence: 1.0, gravity: 1.0, drag: 0.9, cohesion: 1.2 },
+  orbit:  { animation: "orbit",  placement: "scatter",    arrangement: false, turbulence: 0.9, gravity: 1.0, drag: 1.0, cohesion: 1.2 }
+};
+let currentScene = "bounce";
+
+const sceneGrid = document.getElementById("sceneGrid");
+const arrangementLabel = document.getElementById("arrangementLabel");
+const placementSelect = document.getElementById("placement");
+
+function sceneFor(){ return SCENES[currentScene] || SCENES.bounce; }
+
+// <input type="color"> only takes #rrggbb, so the randomiser converts before assigning.
+// Handing it an hsl() string is not a valid value, and browsers that reject it would leave
+// the previous colour in place.
+function hslToHex(h, s, l){
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const hp = (((h % 360) + 360) % 360) / 60;
+  const x = c * (1 - Math.abs(hp % 2 - 1));
+  const m = l - c / 2;
+  let r, g, b;
+  if(hp < 1)      { r = c; g = x; b = 0; }
+  else if(hp < 2) { r = x; g = c; b = 0; }
+  else if(hp < 3) { r = 0; g = c; b = x; }
+  else if(hp < 4) { r = 0; g = x; b = c; }
+  else if(hp < 5) { r = x; g = 0; b = c; }
+  else            { r = c; g = 0; b = x; }
+  const part = v => Math.round((v + m) * 255).toString(16).padStart(2, "0");
+  return `#${part(r)}${part(g)}${part(b)}`;
+}
+
+function scenePlacement(){
+  const scene = sceneFor();
+  return scene.arrangement ? placementSelect.value : scene.placement;
+}
+
+// Update the scene buttons, and show the Arrangement control only when the chosen
+// scene actually has arrangements worth choosing between.
+function setSceneUI(name, arrangementValue){
+  const scene = SCENES[name] || SCENES.bounce;
+  currentScene = SCENES[name] ? name : "bounce";
+
+  if(scene.arrangement){
+    placementSelect.value = arrangementValue || scene.placement;
+    arrangementLabel.classList.remove("hidden");
+  } else {
+    arrangementLabel.classList.add("hidden");
+  }
+
+  Array.from(sceneGrid.children).forEach(btn => {
+    btn.classList.toggle("selected", btn.dataset.scene === currentScene);
+  });
+}
+
+sceneGrid.addEventListener("click", e => {
+  const btn = e.target.closest("button[data-scene]");
+  if(!btn) return;
+  cancelIntroHandover();
+  setSceneUI(btn.dataset.scene);
+  syncVisualState();
+});
 
 const micToggle = document.getElementById("micSyncEnabled");
 const micStatus = document.getElementById("micStatus");
@@ -555,15 +664,15 @@ micToggle.addEventListener("change", async () => {
       analyser.smoothingTimeConstant = 0.65;
       source.connect(analyser);
       
-      micStatus.textContent = "✅ MIC CONNECTED — SYNCOPATE TO SOUND";
-      micStatus.style.color = "#00cc00";
+      micStatus.textContent = "✅ MIC CONNECTED: SYNCOPATE TO SOUND";
+      micStatus.style.color = "#007a00";
       
       if (visualWindow && !visualWindow.closed) {
         visualWindow.postMessage({ micSyncEnabled: true }, "*");
       }
     } catch (e) {
       micStatus.textContent = "❌ MIC ACCESS DENIED";
-      micStatus.style.color = "#cc0000";
+      micStatus.style.color = "#a00000";
       micToggle.checked = false;
     }
   } else {
@@ -595,9 +704,13 @@ function getCurrentState(){
     autoGradient: document.getElementById("autoGradient").checked,
     bgSource: document.getElementById("bgSource").value,
     invertColors: document.getElementById("invertColors").checked,
-    animation: document.getElementById("animation").value,
-    placement: document.getElementById("placement").value,
+    animation: sceneFor().animation,
+    placement: scenePlacement(),
     speed: parseFloat(document.getElementById("speed").value),
+    turbulence: sceneFor().turbulence,
+    gravity: sceneFor().gravity,
+    drag: sceneFor().drag,
+    cohesion: sceneFor().cohesion,
     gridEnabled: document.getElementById("gridEnabled").checked,
     gridColor: document.getElementById("gridColor").value,
     gridSpacing: parseFloat(document.getElementById("gridSpacing").value),
@@ -606,8 +719,7 @@ function getCurrentState(){
     strokeWidth: parseFloat(document.getElementById("strokeWidth").value),
     strokeEnabled: document.getElementById("strokeEnabled").checked,
     postFX: Array.from(document.getElementById("postFX").selectedOptions).map(opt => opt.value),
-    micSyncEnabled: micToggle.checked,
-    micSensitivity: parseFloat(document.getElementById("micSensitivity").value) / 100
+    micSyncEnabled: micToggle.checked
   };
 }
 
@@ -628,12 +740,12 @@ function randomiseVisualState(){
 
   const baseHue = randInt(0, 360);
   const altHue = (baseHue + 130) % 360;
-  document.getElementById("shapeColor1").value = `hsl(${baseHue}, 96%, 58%)`;
-  document.getElementById("shapeColor2").value = `hsl(${(baseHue + 45) % 360}, 92%, 62%)`;
-  document.getElementById("bgColor1").value   = `hsl(${altHue}, 72%, 22%)`;
-  document.getElementById("bgColor2").value   = `hsl(${(altHue + 40) % 360}, 60%, 35%)`;
-  document.getElementById("strokeColor").value = `hsl(${(baseHue + 180) % 360}, 90%, 72%)`;
-  document.getElementById("gridColor").value   = `hsl(${(altHue + 30) % 360}, 50%, 40%)`;
+  document.getElementById("shapeColor1").value = hslToHex(baseHue, 0.96, 0.58);
+  document.getElementById("shapeColor2").value = hslToHex((baseHue + 45) % 360, 0.92, 0.62);
+  document.getElementById("bgColor1").value   = hslToHex(altHue, 0.72, 0.22);
+  document.getElementById("bgColor2").value   = hslToHex((altHue + 40) % 360, 0.60, 0.35);
+  document.getElementById("strokeColor").value = hslToHex((baseHue + 180) % 360, 0.90, 0.72);
+  document.getElementById("gridColor").value   = hslToHex((altHue + 30) % 360, 0.50, 0.40);
   document.getElementById("bgSource").value = "color";
 
   document.getElementById("shapeGradient").checked = r() > 0.25;
@@ -647,12 +759,14 @@ function randomiseVisualState(){
 
   document.getElementById("gridSpacing").value = randInt(25, 120);
   document.getElementById("strokeWidth").value = randInt(2, 7);
-  document.getElementById("micSensitivity").value = randInt(20, 100);
 
-  const placements = ["normal","scatter","vertical","horizontal"];
-  const animations = ["bounce","pulse","wave","rain"];
-  document.getElementById("placement").value = placements[randInt(0,3)];
-  document.getElementById("animation").value = animations[randInt(0,3)];
+  // One whole scene at a time: motion, arrangement and physics change together, so a
+  // random pick is always a coherent physicality.
+  const sceneNames = Object.keys(SCENES);
+  const sceneName = sceneNames[randInt(0, sceneNames.length - 1)];
+  const scene = SCENES[sceneName];
+  const arrangement = scene.arrangement ? ["normal", "horizontal", "vertical"][randInt(0, 2)] : undefined;
+  setSceneUI(sceneName, arrangement);
 
   const fxSelect = document.getElementById("postFX");
   Array.from(fxSelect.options).forEach(opt => opt.selected = false);
@@ -671,40 +785,67 @@ function randomiseVisualState(){
 
   const shapeVal = parseInt(document.getElementById("shapes").value);
   document.getElementById("shapeLabel").textContent = `[${shapeNames[shapeVal]}]`;
+  syncVisualState();
+}
+
+/* The opening moment: one black square bouncing on a plain white ground, before a random
+   scene settles in over the top of it. It is applied to the panel as well, so the controls
+   always show what the output is doing. */
+const INTRO = {
+  scene: "bounce",
+  shapes: 1, size: 150, count: 1, speed: 8,
+  shapeColor1: "#000000", shapeColor2: "#000000",
+  shapeGradient: false, shapeAutoGradient: false,
+  strokeEnabled: false,
+  bgColor1: "#ffffff", bgColor2: "#ffffff",
+  bgGradient: false, autoGradient: false,
+  gridEnabled: false, grainEnabled: false,
+  invertColors: false,
+  postFX: ["none"]
+};
+const INTRO_SECONDS = 5;
+let introHandover = null;
+
+// Touching any control during the intro means the user has taken over, so the pending
+// handover is dropped rather than overwriting what they just set.
+function cancelIntroHandover(){
+  if(introHandover){ clearTimeout(introHandover); introHandover = null; }
+}
+
+function applyIntroScene(){
+  Object.entries(INTRO).forEach(([id, value]) => {
+    if(id === "scene") return;
+    const el = document.getElementById(id);
+    if(!el) return;
+    if(el.type === "checkbox") el.checked = value;
+    else if(id === "postFX") Array.from(el.options).forEach(o => { o.selected = o.value === "none"; });
+    else el.value = value;
+  });
+  setSceneUI(INTRO.scene);
+  shapeLabel.textContent = `[${shapeNames[INTRO.shapes]}]`;
 }
 
 function openVisualWindow(){
-  randomiseVisualState();
-
   if(visualWindow && !visualWindow.closed){
     visualWindow.focus();
     syncVisualState();
     return;
   }
 
+  applyIntroScene();
+
   const screenLeft = window.screen.availLeft ?? window.screenX ?? window.screenLeft ?? 0;
   const screenTop = window.screen.availTop ?? window.screenY ?? window.screenTop ?? 0;
   const screenWidth = window.screen.availWidth ?? window.innerWidth;
   const screenHeight = window.screen.availHeight ?? window.innerHeight;
 
-  const ctrlLeft = window.screenX ?? window.screenLeft ?? screenLeft;
-  const ctrlTop = window.screenY ?? window.screenTop ?? screenTop;
-  const ctrlWidth = window.outerWidth || Math.min(800, screenWidth);
-  const ctrlHeight = window.outerHeight || Math.min(900, screenHeight);
-
-  const rightSpace = screenLeft + screenWidth - (ctrlLeft + ctrlWidth);
-  const leftSpace = ctrlLeft - screenLeft;
-
-  let left = ctrlLeft + ctrlWidth;
-  if (rightSpace < ctrlWidth && leftSpace >= ctrlWidth) {
-    left = Math.max(screenLeft, ctrlLeft - ctrlWidth);
-  } else if (rightSpace < ctrlWidth) {
-    left = screenLeft + 20;
-  }
-
-  const width = ctrlWidth;
-  const height = ctrlHeight;
-  const top = ctrlTop;
+  // Open the visual at the full size of the display the controller sits on, so it can be
+  // dragged onto a second screen / projector and used as the output. It is deliberately NOT
+  // sized from the controller window, which stays narrow (see snapBrowserToControllerWidth).
+  const left = screenLeft;
+  const top = screenTop;
+  const width = screenWidth;
+  const height = screenHeight;
   const features = `toolbar=no,location=no,status=no,menubar=no,scrollbars=no,resizable=yes,width=${width},height=${height},left=${left},top=${top}`;
 
   visualWindow = window.open("visual.html", "visual", features);
@@ -721,16 +862,83 @@ function openVisualWindow(){
     setTimeout(postInitialState, 120);
     setTimeout(postInitialState, 400);
   }
+
+  // Hand over to a random scene, which settles in over the intro rather than cutting to it.
+  cancelIntroHandover();
+  introHandover = setTimeout(() => {
+    introHandover = null;
+    randomiseVisualState();
+  }, INTRO_SECONDS * 1000);
 }
 
 document.getElementById("openVisual").addEventListener("click", openVisualWindow);
+
+// Snap the controller's own browser window to the width of the narrow controller panel, so the
+// window matches the panel instead of spanning the whole display. resizeTo is only honoured for
+// windows opened by script; in a normal tab it is ignored and the controller stays centred.
+function snapBrowserToControllerWidth(){
+  const controller = document.getElementById("controller");
+  if(!controller) return;
+  try {
+    const rect = controller.getBoundingClientRect();
+    const chromeWidth = Math.max(0, (window.outerWidth || 0) - (window.innerWidth || 0));
+    const targetWidth = Math.ceil(rect.width) + 40 + chromeWidth; // 40 = body padding (20px per side)
+    const targetHeight = window.outerHeight || window.screen.availHeight || document.documentElement.clientHeight;
+    window.resizeTo(targetWidth, targetHeight);
+  } catch(e) { /* not a script-opened window; leave the browser as-is */ }
+}
+
+snapBrowserToControllerWidth();
 
 const darkModeToggle = document.getElementById("darkModeToggle");
 darkModeToggle.addEventListener("change", () => {
   document.body.classList.toggle("dark-mode", darkModeToggle.checked);
 });
 
-document.getElementById("randomise").addEventListener("click", randomiseVisualState);
+const continuousToggle = document.getElementById("continuousRandomise");
+const continuousStatus = document.getElementById("continuousRandomiseStatus");
+let continuousRandomiseTimer = null;
+
+function clearContinuousRandomise(){
+  if (continuousRandomiseTimer) {
+    clearInterval(continuousRandomiseTimer);
+    continuousRandomiseTimer = null;
+  }
+}
+
+function toggleContinuousRandomise(){
+  clearContinuousRandomise();
+  if (continuousStatus) {
+    if (continuousToggle.checked) {
+      continuousStatus.textContent = "✅ CONTINUOUS MODE ON: SIT BACK AND ACID";
+      continuousStatus.style.color = "#007a00";
+      continuousStatus.classList.remove("hidden");
+    } else {
+      continuousStatus.classList.add("hidden");
+    }
+  }
+  if (!continuousToggle.checked) return;
+
+  if (!visualWindow || visualWindow.closed) {
+    openVisualWindow();
+  } else {
+    randomiseVisualState();
+  }
+
+  continuousRandomiseTimer = window.setInterval(() => {
+    randomiseVisualState();
+  }, 30000);
+}
+
+continuousToggle.addEventListener("change", toggleContinuousRandomise);
+
+document.getElementById("randomise").addEventListener("click", () => {
+  randomiseVisualState();
+  if (continuousToggle.checked) {
+    clearContinuousRandomise();
+    toggleContinuousRandomise();
+  }
+});
 
 const shapesSlider = document.getElementById("shapes");
 const shapeLabel = document.getElementById("shapeLabel");
@@ -739,17 +947,17 @@ shapesSlider.addEventListener("input", e => {
   shapeLabel.textContent = `[${shapeNames[val]}]`;
 });
 
-const inputs = ["shapes","size","count","shapeColor1","shapeColor2","shapeGradient","shapeAutoGradient","bgColor1","bgColor2","bgGradient","autoGradient","bgSource","micSensitivity","invertColors","animation","placement","speed","gridEnabled","gridColor","gridSpacing","grainEnabled","strokeColor","strokeWidth","strokeEnabled","postFX"];
+const inputs = ["shapes","size","count","shapeColor1","shapeColor2","shapeGradient","shapeAutoGradient","bgColor1","bgColor2","bgGradient","autoGradient","bgSource","invertColors","placement","speed","gridEnabled","gridColor","gridSpacing","grainEnabled","strokeColor","strokeWidth","strokeEnabled","postFX"];
 
 inputs.forEach(id => {
   const el = document.getElementById(id);
   if (!el) return;
   el.addEventListener("input", () => {
+    cancelIntroHandover();
     let value;
     if (el.type === "checkbox") value = el.checked;
     else if (el.type === "range" || el.type === "number") value = parseFloat(el.value);
     else if (id === "postFX") value = Array.from(el.selectedOptions).map(opt => opt.value);
-    else if (id === "micSensitivity") value = parseFloat(el.value) / 100;
     else value = el.value;
 
     if (visualWindow && !visualWindow.closed) {
@@ -793,12 +1001,9 @@ function setDefaultScene(){
     strokeEnabled: false,
     strokeColor: "#ffffff",
     strokeWidth: 3,
-    placement: "normal",
-    animation: "bounce",
     speed: 5,
     invertColors: false,
     grainEnabled: true,
-    micSensitivity: 60,
     postFX: ["none"]
   };
 
@@ -812,6 +1017,7 @@ function setDefaultScene(){
       });
     } else el.value = value;
   });
+  setSceneUI("bounce");
   shapeLabel.textContent = `[${shapeNames[0]}]`;
 }
 
