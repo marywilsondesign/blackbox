@@ -463,6 +463,7 @@ body.dark-mode .system-preamble .warning {
 <div class="system-preamble">
   'OPEN VISUAL' IS THE LIVE CONTROLLED OUTPUT.<br><br>
   ADJUST PARAMETERS BELOW: CHANGES ARE REFLECTED IN REAL TIME IN THE VISUAL OUTPUT WINDOW.<br><br>
+  <span class="warning">NOTE: THE VISUAL OUTPUT MAY LAG WITH CERTAIN COMBINATIONS OF QUANTITY, SIZE AND POST FX.</span><br><br>
   <span class="warning">NOTE: THIS EXPERIENCE IS NOT OPTIMISED FOR MOBILE DEVICES.</span>
 </div>
 
@@ -848,7 +849,10 @@ function openVisualWindow(){
   const height = screenHeight;
   const features = `toolbar=no,location=no,status=no,menubar=no,scrollbars=no,resizable=yes,width=${width},height=${height},left=${left},top=${top}`;
 
-  visualWindow = window.open("visual.html", "visual", features);
+  // The live site serves the visual from a directory, so its URL carries no .html. Opened from
+  // disk it is a plain file beside this page, and a bare directory path would only list it.
+  const visualUrl = location.protocol === "file:" ? "visual.html" : "visual/";
+  visualWindow = window.open(visualUrl, "visual", features);
   if (visualWindow) {
     visualWindow.focus();
     const initialState = Object.assign({ activateVisual: true }, getCurrentState());
